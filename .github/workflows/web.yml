@@ -23,5 +23,5 @@ jobs:
       working-directory: preview
       ssg: true
       features: fullstack
-      base-path: components
+      base-path: ${{ github.event.repository.name }}
       dx-cli-version: 0.7.6

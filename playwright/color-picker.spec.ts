@@ -127,6 +127,13 @@ test('escape closes the color picker popover', async ({ page }) => {
   await expect(popover).toHaveCount(0);
 });
 
+test('clicking outside closes the color picker popover', async ({ page }) => {
+  const { popover } = await openPicker(page);
+  // Click far outside the popover.
+  await page.mouse.click(2, 2);
+  await expect(popover).toHaveCount(0);
+});
+
 test('clicking the color area updates saturation and value', async ({ page }) => {
   await openPicker(page);
 

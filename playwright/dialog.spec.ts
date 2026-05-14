@@ -25,4 +25,11 @@ test('test', async ({ page }) => {
   await closeButton.click();
   // Assert the dialog is closed after clicking close
   await expect(dialog).toHaveCount(0);
+
+  // Reopen the dialog
+  await page.getByRole('button', { name: 'Show Dialog' }).click();
+  await expect(dialog).toBeVisible();
+  // Clicking far outside the dialog content should dismiss it.
+  await page.mouse.click(2, 2);
+  await expect(dialog).toHaveCount(0);
 });

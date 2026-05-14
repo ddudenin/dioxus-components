@@ -23,13 +23,13 @@
   will-change: transform, opacity;
 }
 
-.dx-popover-content[data-state="closed"] {
-  display: none;
+.dx-popover-content[data-state="open"] {
+  animation: dx-popover-fade-in .2s ease-in-out;
 }
 
-.dx-popover-content[data-state="open"] {
-  display: flex;
-  animation: dx-popover-fade-in .2s ease-in-out;
+.dx-popover-content[data-state="closed"] {
+  animation: dx-popover-fade-out .2s ease-in-out forwards;
+  pointer-events: none;
 }
 
 @keyframes dx-popover-fade-in {
@@ -39,6 +39,16 @@
 
   to {
     opacity: 1;
+  }
+}
+
+@keyframes dx-popover-fade-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
   }
 }
 

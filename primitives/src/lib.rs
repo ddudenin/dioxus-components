@@ -208,6 +208,38 @@ fn use_global_keydown_listener(key: &'static str, on_escape: impl FnMut() + Clon
     });
 }
 
+/// Light-dismiss when pointerdown/focusin lands outside the element with the given `id`.
+/// `id` should be the id of the popover/dialog root that contains every "inside" element.
+fn use_outside_dismiss(
+    id: impl Readable<Target = String> + Copy + 'static,
+    on_dismiss: impl FnMut() + Clone + 'static,
+) {
+    use_effect_with_cleanup(move || {
+        let mut eval = document::eval(
+            "const id = await dioxus.recv();
+            const f = e => {
+                const root = document.getElementById(id);
+                if (root && !root.contains(e.target)) dioxus.send(true);
+            };
+            document.addEventListener('pointerdown', f, true);
+            document.addEventListener('focusin', f, true);
+            await dioxus.recv();
+            document.removeEventListener('pointerdown', f, true);
+            document.removeEventListener('focusin', f, true);",
+        );
+        let _ = eval.send(id.cloned());
+        let mut on_dismiss = on_dismiss.clone();
+        spawn(async move {
+            while let Ok(true) = eval.recv().await {
+                on_dismiss();
+            }
+        });
+        move || {
+            let _ = eval.send(true);
+        }
+    });
+}
+
 fn use_animated_open(
     id: impl Readable<Target = String> + Copy + 'static,
     open: impl Readable<Target = bool> + Copy + 'static,

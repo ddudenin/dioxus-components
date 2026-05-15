@@ -51,6 +51,7 @@ pub mod tabs;
 pub mod toast;
 pub mod toggle;
 pub mod toggle_group;
+pub mod tag_group;
 pub mod toolbar;
 pub mod tooltip;
 pub(crate) mod r#virtual;

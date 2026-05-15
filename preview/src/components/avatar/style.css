@@ -22,7 +22,6 @@
     align-items: center;
     justify-content: center;
     color: var(--secondary-color-4);
-    cursor: pointer;
     font-weight: 500;
 }
 
@@ -60,7 +59,6 @@
     border-radius: 8px;
 }
 
-/* State-specific styles */
 .dx-avatar[data-state="loading"] {
     animation: dx-pulse 1.5s infinite ease-in-out;
 }

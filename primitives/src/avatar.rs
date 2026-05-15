@@ -28,6 +28,35 @@ struct AvatarCtx {
     on_state_change: Option<EventHandler<AvatarState>>,
 }
 
+fn set_avatar_state(mut ctx: AvatarCtx, state: AvatarState) -> bool {
+    if *ctx.state.peek() == state {
+        return false;
+    }
+
+    ctx.state.set(state);
+    if let Some(handler) = &ctx.on_state_change {
+        handler.call(state);
+    }
+
+    true
+}
+
+fn mark_avatar_loaded(ctx: AvatarCtx) {
+    if set_avatar_state(ctx.clone(), AvatarState::Loaded) {
+        if let Some(handler) = &ctx.on_load {
+            handler.call(());
+        }
+    }
+}
+
+fn mark_avatar_error(ctx: AvatarCtx) {
+    if set_avatar_state(ctx.clone(), AvatarState::Error) {
+        if let Some(handler) = &ctx.on_error {
+            handler.call(());
+        }
+    }
+}
+
 /// The props for the [`Avatar`] component.
 #[derive(Props, Clone, PartialEq)]
 pub struct AvatarProps {
@@ -86,13 +115,6 @@ pub fn Avatar(props: AvatarProps) -> Element {
     let state = use_signal(|| AvatarState::Empty);
     let has_fallback_child = use_signal(|| false);
     let has_image_child = use_signal(|| false);
-
-    // Notify about initial state
-    use_effect(move || {
-        if let Some(handler) = &props.on_state_change {
-            handler.call(state());
-        }
-    });
 
     // Create context for child components
     use_context_provider(|| AvatarCtx {
@@ -233,35 +255,71 @@ pub struct AvatarImageProps {
 /// ```
 #[component]
 pub fn AvatarImage(props: AvatarImageProps) -> Element {
-    let mut ctx: AvatarCtx = use_context();
+    let ctx: AvatarCtx = use_context();
+    let mut current_src = use_signal(|| None::<String>);
+    let src = props.src.clone();
+    let mut effect_ctx = ctx.clone();
 
-    // Mark that an image child is provided and set initial loading state
-    use_effect(move || {
-        ctx.has_image_child.set(true);
-        ctx.state.set(AvatarState::Loading);
-    });
+    // Track the image source independently so source changes reset loading state before the
+    // browser's image events report the final result.
+    use_effect(use_reactive!(|src| {
+        effect_ctx.has_image_child.set(true);
+
+        if src.is_empty() {
+            current_src.set(None);
+            set_avatar_state(effect_ctx.clone(), AvatarState::Empty);
+            return;
+        }
+
+        if current_src.peek().as_ref() != Some(&src) {
+            current_src.set(Some(src.clone()));
+            set_avatar_state(effect_ctx.clone(), AvatarState::Loading);
+        }
+    }));
+
+    let load_src = props.src.clone();
+    let load_ctx = ctx.clone();
+    let mut load_current_src = current_src;
 
     let handle_load = move |_| {
-        ctx.state.set(AvatarState::Loaded);
-        if let Some(handler) = &ctx.on_load {
-            handler.call(());
+        if load_src.is_empty() {
+            return;
         }
-        if let Some(handler) = &ctx.on_state_change {
-            handler.call(AvatarState::Loaded);
+
+        let matches_current_src = load_current_src
+            .peek()
+            .as_ref()
+            .map(|src| src == &load_src)
+            .unwrap_or(true);
+
+        if matches_current_src {
+            load_current_src.set(Some(load_src.clone()));
+            mark_avatar_loaded(load_ctx.clone());
         }
     };
+
+    let error_src = props.src.clone();
+    let error_ctx = ctx.clone();
+    let mut error_current_src = current_src;
 
     let handle_error = move |_| {
-        ctx.state.set(AvatarState::Error);
-        if let Some(handler) = &ctx.on_error {
-            handler.call(());
+        if error_src.is_empty() {
+            return;
         }
-        if let Some(handler) = &ctx.on_state_change {
-            handler.call(AvatarState::Error);
+
+        let matches_current_src = error_current_src
+            .peek()
+            .as_ref()
+            .map(|src| src == &error_src)
+            .unwrap_or(true);
+
+        if matches_current_src {
+            error_current_src.set(Some(error_src.clone()));
+            mark_avatar_error(error_ctx.clone());
         }
     };
 
-    let show_image = (ctx.state)() != AvatarState::Error;
+    let show_image = !props.src.is_empty() && (ctx.state)() != AvatarState::Error;
     if !show_image {
         return rsx!({});
     }

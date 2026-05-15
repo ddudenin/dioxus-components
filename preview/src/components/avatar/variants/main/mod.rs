@@ -12,11 +12,12 @@ pub fn Demo() -> Element {
             display: "flex",
             flex_direction: "row",
             align_items: "center",
-            justify_content: "between",
+            justify_content: "center",
+            flex_wrap: "wrap",
             gap: "1rem",
             div { class: Styles::dx_avatar_item,
                 p { class: Styles::dx_avatar_label, "Basic Usage" }
-                Avatar {
+                ImageAvatar {
                     size: AvatarImageSize::Small,
                     src: "https://avatars.githubusercontent.com/u/66571940?s=96&v=4",
                     alt: "User avatar",
@@ -29,7 +30,7 @@ pub fn Demo() -> Element {
             }
             div { class: Styles::dx_avatar_item,
                 p { class: Styles::dx_avatar_label, "Rounded" }
-                Avatar {
+                ImageAvatar {
                     size: AvatarImageSize::Small,
                     shape: AvatarShape::Rounded,
                     src: "https://avatars.githubusercontent.com/u/66571940?s=96&v=4",
@@ -42,8 +43,17 @@ pub fn Demo() -> Element {
                 }
             }
             div { class: Styles::dx_avatar_item,
-                p { class: Styles::dx_avatar_label, "Error State" }
+                p { class: Styles::dx_avatar_label, "Loading" }
                 Avatar {
+                    size: AvatarImageSize::Small,
+                    aria_label: "Loading avatar",
+                    "data-state": "loading",
+                    AvatarFallback { "LD" }
+                }
+            }
+            div { class: Styles::dx_avatar_item,
+                p { class: Styles::dx_avatar_label, "Error State" }
+                ImageAvatar {
                     size: AvatarImageSize::Medium,
                     src: "https://invalid-url.example/image.jpg",
                     alt: "Invalid image",
@@ -56,7 +66,7 @@ pub fn Demo() -> Element {
             }
             div { class: Styles::dx_avatar_item,
                 p { class: Styles::dx_avatar_label, "Large Size" }
-                Avatar {
+                ImageAvatar {
                     size: AvatarImageSize::Large,
                     src: asset!("/assets/dioxus-logo.png", ImageAssetOptions::new().with_avif()).to_string(),
                     alt: "Large avatar",

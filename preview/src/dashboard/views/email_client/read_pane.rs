@@ -4,7 +4,7 @@ use dioxus_primitives::select as primitive_select;
 use dioxus_primitives::toast::{use_toast, ToastOptions};
 use std::rc::Rc;
 
-use crate::components::avatar::{Avatar, AvatarImageSize, AvatarShape};
+use crate::components::avatar::{AvatarImageSize, AvatarShape, ImageAvatar};
 use crate::components::badge::{Badge, BadgeVariant};
 use crate::components::button::{Button, ButtonVariant};
 use crate::components::card::{Card, CardContent, CardDescription, CardHeader, CardTitle};
@@ -227,7 +227,7 @@ pub(super) fn ReadPane(
                 Card { class: if selected_static.thread_count > 1 { "ec-thread-msg" } else { "ec-thread-msg ec-thread-msg-current" },
                     CardContent { class: "ec-thread-msg-content",
                         div { class: "ec-thread-msg-head",
-                            Avatar {
+                            ImageAvatar {
                                 size: AvatarImageSize::Small,
                                 shape: AvatarShape::Circle,
                                 src: "{avatar_profile_for_key(selected_static.sender.addr).src}",
@@ -252,7 +252,7 @@ pub(super) fn ReadPane(
                     Card { class: "ec-thread-msg ec-thread-msg-current",
                         CardContent { class: "ec-thread-msg-content",
                             div { class: "ec-thread-msg-head",
-                                Avatar {
+                                ImageAvatar {
                                     size: AvatarImageSize::Small,
                                     shape: AvatarShape::Circle,
                                     src: "{AVATAR_PROFILE_OPTIONS[0].src}",
@@ -279,7 +279,7 @@ pub(super) fn ReadPane(
                 Card { class: "ec-thread-compose",
                     CardContent { class: "ec-thread-compose-content",
                         div { class: "ec-thread-compose-row",
-                            Avatar {
+                            ImageAvatar {
                                 size: AvatarImageSize::Small,
                                 shape: AvatarShape::Circle,
                                 src: "{AVATAR_PROFILE_OPTIONS[0].src}",

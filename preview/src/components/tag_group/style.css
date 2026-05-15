@@ -37,14 +37,6 @@
   box-shadow: 0 0 0 2px var(--focused-border-color);
 }
 
-.dx-item-body-div {
-  min-width: 0;
-  flex-grow: 1;
-  font-size: 14px;
-  font-weight: normal;
-  line-height: 20px;
-}
-
 .dx-remove-button {
   display: flex;
   overflow: visible;

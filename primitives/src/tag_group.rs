@@ -3,6 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::focus::{use_focus_controlled_item_disabled, use_focus_provider, FocusState};
+use crate::list_data::element_key;
 use crate::{use_controlled, use_unique_id};
 
 use std::collections::HashSet;
@@ -17,14 +18,6 @@ pub enum SelectionMode {
     Single,
     /// Any number of tags may be selected.
     Multiple,
-}
-
-fn element_key(element: &Element, index: usize) -> String {
-    element
-        .as_ref()
-        .ok()
-        .and_then(|vnode| vnode.key.clone())
-        .unwrap_or_else(|| index.to_string())
 }
 
 /// Context provided by [`TagGroup`] to its descendants.
@@ -46,12 +39,21 @@ pub struct TagGroupCtx {
     allows_empty_selection: ReadSignal<bool>,
     escape_clears_selection: ReadSignal<bool>,
     allows_removing: ReadSignal<bool>,
+    render_empty_state: Callback<(), Element>,
 }
 
 impl TagGroupCtx {
     /// Returns whether tags in this group show a remove control and can be deleted.
     pub fn is_removable(&self) -> bool {
         (self.allows_removing)()
+    }
+
+    /// Returns the stable key for the tag at `index`
+    pub fn item_key(&self, index: usize) -> String {
+        (self.list_items)()
+            .get(index)
+            .map(|element| element_key(element, index))
+            .unwrap_or_else(|| index.to_string())
     }
 
     fn is_tag_disabled(&self, key: &str) -> bool {
@@ -111,8 +113,7 @@ impl TagGroupCtx {
             .iter()
             .enumerate()
             .filter_map(|(index, element)| {
-                keys.contains(&element_key(element, index))
-                    .then_some(index)
+                keys.contains(&element_key(element, index)).then_some(index)
             })
             .collect();
         indices.sort_unstable_by(|a, b| b.cmp(a));
@@ -138,26 +139,6 @@ impl TagGroupCtx {
             return;
         }
         self.remove_tags((self.selected_tags)());
-    }
-}
-
-/// Context provided by [`Tag`] to its children.
-/// Use `use_context::<TagItemContext>()` to access the current item's index and key.
-#[derive(Clone, Copy)]
-pub struct TagItemContext {
-    index: Signal<usize>,
-    key: Memo<String>,
-}
-
-impl TagItemContext {
-    /// Returns the index of the current tag in the list.
-    pub fn index(&self) -> usize {
-        (self.index)()
-    }
-
-    /// Returns the stable key of the current tag (selection, disabled state, removal).
-    pub fn key(&self) -> String {
-        (self.key)()
     }
 }
 
@@ -211,6 +192,10 @@ pub struct TagGroupProps {
     #[props(default = ReadSignal::new(Signal::new(true)))]
     pub roving_loop: ReadSignal<bool>,
 
+    /// Renders content when [`TagGroupProps::items`] is empty.
+    #[props(default = Callback::new(|_| rsx! { div { "No tags" }}))]
+    pub render_empty_state: Callback<(), Element>,
+
     /// Additional attributes to apply to the tag group element.
     #[props(extends = GlobalAttributes)]
     pub attributes: Vec<Attribute>,
@@ -223,8 +208,40 @@ pub struct TagGroupProps {
 /// # TagGroup
 ///
 /// A focusable group of tags with optional selection and removal.
-/// Pass tag content via `items` and render them with [`TagList`] / [`Tag`],
-/// similar to [`crate::drag_and_drop_list::DragAndDropList`].
+/// Pass tag content via [`TagGroupProps::items`] (set a vnode `key` on each item)
+/// and render them with [`TagList`] / [`Tag`], or customize the list in `children`.
+///
+/// ## Example
+///
+/// ```rust
+/// use dioxus::prelude::*;
+/// use dioxus_primitives::tag_group::{TagGroup, SelectionMode};
+/// use std::collections::HashSet;
+///
+/// #[component]
+/// fn Demo() -> Element {
+///     let items = ["bug", "feature"]
+///         .into_iter()
+///         .map(|label| rsx! {
+///             span { key: "{label}", {label} }
+///         })
+///         .collect::<Vec<_>>();
+///
+///     let mut selected = use_signal(|| HashSet::from(["bug".to_string()]));
+///     let selected_tags = use_memo(move || Some(selected()));
+///
+///     rsx! {
+///         TagGroup {
+///             label: "Labels",
+///             items,
+///             selection_mode: SelectionMode::Multiple,
+///             selected_tags,
+///             on_selection_change: move |tags| selected.set(tags),
+///             allows_removing: true,
+///         }
+///     }
+/// }
+/// ```
 #[component]
 pub fn TagGroup(props: TagGroupProps) -> Element {
     let label_id = use_unique_id();
@@ -252,6 +269,7 @@ pub fn TagGroup(props: TagGroupProps) -> Element {
         allows_empty_selection: props.allows_empty_selection,
         escape_clears_selection: props.escape_clears_selection,
         allows_removing: props.allows_removing,
+        render_empty_state: props.render_empty_state,
     });
 
     let children = props.children.unwrap_or_else(|| rsx! { TagList {} });
@@ -287,13 +305,10 @@ pub fn use_tag_list_items() -> Vec<TagListRenderItem> {
     (ctx.list_items)()
         .into_iter()
         .enumerate()
-        .map(|(index, children)| {
-            let key = element_key(&children, index);
-            TagListRenderItem {
-                index,
-                key,
-                children,
-            }
+        .map(|(index, children)| TagListRenderItem {
+            index,
+            key: ctx.item_key(index),
+            children,
         })
         .collect()
 }
@@ -310,10 +325,50 @@ pub struct TagListProps {
     pub children: Option<Element>,
 }
 
-/// The inner grid element for tags. Defaults to rendering one [`Tag`] per item.
+/// # TagList
+///
+/// The inner grid element for tags inside a [`TagGroup`].
+/// Renders with one [`Tag`] per row by default. When [`TagGroupProps::items`] is empty, shows
+/// [`TagGroupProps::render_empty_state`] instead of the list.
+///
+/// This must be used inside a [`TagGroup`] component.
+///
+/// ## Example
+///
+/// ```rust
+/// use dioxus::prelude::*;
+/// use dioxus_primitives::tag_group::{Tag, TagGroup, TagList, use_tag_list_items};
+///
+/// #[component]
+/// fn Demo() -> Element {
+///     let items = ["bug", "feature"]
+///         .into_iter()
+///         .map(|label| rsx! {
+///             span { key: "{label}", {label} }
+///         })
+///         .collect::<Vec<_>>();
+///
+///     rsx! {
+///         TagGroup {
+///             label: "Labels",
+///             items,
+///             TagList {
+///                 for item in use_tag_list_items() {
+///                     Tag {
+///                         key: "{item.key}",
+///                         index: item.index,
+///                         {item.children}
+///                     }
+///                 }
+///             }
+///         }
+///     }
+/// }
+/// ```
 #[component]
 pub fn TagList(props: TagListProps) -> Element {
     let ctx = use_context::<TagGroupCtx>();
+    let is_empty = (ctx.list_items)().is_empty();
 
     let children = props.children.unwrap_or_else(|| {
         rsx! {
@@ -335,7 +390,11 @@ pub fn TagList(props: TagListProps) -> Element {
             aria_multiselectable: if ctx.selection_mode == SelectionMode::Multiple { "true" },
             aria_colcount: "1",
             ..props.attributes,
-            {children}
+            if is_empty {
+                {ctx.render_empty_state.call(())}
+            } else {
+                {children}
+            }
         }
     }
 }
@@ -360,26 +419,50 @@ pub struct TagProps {
 
 /// # Tag
 ///
-/// A single tag row inside [`TagList`]. Must be used within [`TagGroup`].
+/// A single tag row inside [`TagList`].
+/// Handles focus, selection (Space/Enter), arrow-key navigation, and removal
+/// (Delete/Backspace when [`TagGroupProps::allows_removing`] is enabled).
+///
+/// Pass the list index from [`use_tag_list_items`] or from your own `enumerate()`.
+/// This must be used within a [`TagGroup`] component.
+///
+/// ## Example
+///
+/// ```rust
+/// use dioxus::prelude::*;
+/// use dioxus_primitives::tag_group::{Tag, TagGroup, TagList, use_tag_list_items};
+///
+/// #[component]
+/// fn Demo() -> Element {
+///     let items = [rsx! { span { key: "{0}", "bug" } }].to_vec();
+///
+///     rsx! {
+///         TagGroup {
+///             items,
+///             TagList {
+///                 for item in use_tag_list_items() {
+///                     Tag {
+///                         key: "{item.key}",
+///                         index: item.index,
+///                         {item.children}
+///                     }
+///                 }
+///             }
+///         }
+///     }
+/// }
+/// ```
+///
+/// ## Styling
+///
+/// The [`Tag`] component defines the following data attributes you can use to control styling:
+/// - `data-selected`: `true` when the tag is selected.
+/// - `data-disabled`: `true` when the tag is disabled.
 #[component]
 pub fn Tag(props: TagProps) -> Element {
     let index = props.index;
     let mut ctx = use_context::<TagGroupCtx>();
-
-    let tag_key = use_memo(move || {
-        (ctx.list_items)()
-            .get(index)
-            .map(|element| element_key(element, index))
-            .unwrap_or_else(|| index.to_string())
-    });
-
-    let mut item_ctx = use_context_provider(|| TagItemContext {
-        index: Signal::new(index),
-        key: tag_key,
-    });
-    if *item_ctx.index.peek() != index {
-        item_ctx.index.set(index);
-    }
+    let tag_key = move || ctx.item_key(index);
 
     let tabindex = use_memo(move || {
         if !(ctx.focus.roving_loop)() {
@@ -402,7 +485,6 @@ pub fn Tag(props: TagProps) -> Element {
             return;
         }
         let event_key = e.key();
-        let item_key = tag_key();
         let mut prevent_default = false;
 
         match event_key {
@@ -411,11 +493,11 @@ pub fn Tag(props: TagProps) -> Element {
                 prevent_default = true;
             }
             Key::Character(s) if s == " " => {
-                ctx.toggle_tag(item_key.clone());
+                ctx.toggle_tag(tag_key());
                 prevent_default = true;
             }
             Key::Enter => {
-                ctx.toggle_tag(item_key);
+                ctx.toggle_tag(tag_key());
                 prevent_default = true;
             }
             Key::Backspace | Key::Delete => {
@@ -449,7 +531,6 @@ pub fn Tag(props: TagProps) -> Element {
     rsx! {
         div {
             role: "row",
-            key: "{tag_key()}",
             tabindex,
             aria_selected: if ctx.selection_mode != SelectionMode::None { is_selected() },
             aria_disabled: is_disabled(),

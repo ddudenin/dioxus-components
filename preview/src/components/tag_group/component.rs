@@ -1,8 +1,6 @@
 use dioxus::prelude::*;
 use dioxus_icons::lucide::X;
-use dioxus_primitives::tag_group::{
-    self, TagGroupCtx, TagGroupProps, TagItemContext, TagListProps, TagProps,
-};
+use dioxus_primitives::tag_group::{self, TagGroupCtx, TagGroupProps, TagListProps, TagProps};
 use std::collections::HashSet;
 
 #[css_module("/src/components/tag_group/style.css")]
@@ -10,31 +8,11 @@ struct Styles;
 
 #[component]
 pub fn TagGroup(props: TagGroupProps) -> Element {
-    let items: Vec<Element> = props
-        .items
-        .iter()
-        .enumerate()
-        .map(|(idx, item)| {
-            let key = item
-                .as_ref()
-                .ok()
-                .and_then(|v| v.key.clone())
-                .unwrap_or_else(|| idx.to_string());
-            rsx! {
-                div {
-                    class: Styles::dx_item_body_div,
-                    key: "{key}",
-                    {item}
-                }
-            }
-        })
-        .collect();
-
     rsx! {
         tag_group::TagGroup {
             class: Styles::dx_tag_group,
             label: props.label,
-            items,
+            items: props.items,
             selection_mode: props.selection_mode,
             selected_tags: props.selected_tags,
             default_selected_tags: props.default_selected_tags,
@@ -45,6 +23,7 @@ pub fn TagGroup(props: TagGroupProps) -> Element {
             escape_clears_selection: props.escape_clears_selection,
             allows_removing: props.allows_removing,
             roving_loop: props.roving_loop,
+            render_empty_state: props.render_empty_state,
             attributes: props.attributes,
             TagList { {props.children} }
         }
@@ -62,10 +41,11 @@ fn TagList(props: TagListProps) -> Element {
             attributes: props.attributes,
             for item in tag_group::use_tag_list_items() {
                 Tag {
+                    key: "{item.key}",
                     index: item.index,
                     {item.children}
                     if is_removable {
-                        RemoveButton {}
+                        RemoveButton { index: item.index }
                     }
                 }
             }
@@ -89,12 +69,12 @@ pub fn Tag(props: TagProps) -> Element {
 
 #[component]
 fn RemoveButton(
+    index: usize,
     #[props(extends = GlobalAttributes)] attributes: Vec<Attribute>,
     children: Element,
 ) -> Element {
     let mut ctx: TagGroupCtx = use_context();
-    let item_ctx: TagItemContext = use_context();
-    let tag_key = item_ctx.key();
+    let tag_key = ctx.item_key(index);
 
     rsx! {
         button {

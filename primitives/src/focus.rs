@@ -131,14 +131,24 @@ impl FocusState {
     }
 
     pub(crate) fn set_focus(&mut self, index: Option<usize>) {
-        if let Some(idx) = index {
-            if self.items.peek().get(&idx) == Some(&true) {
-                self.current_focus.set(None);
-                return;
-            }
+        // Resolve the effective target: an index pointing at a disabled item
+        // collapses to None.
+        let target = match index {
+            Some(idx) if self.items.peek().get(&idx) == Some(&true) => None,
+            other => other,
+        };
+        if let Some(idx) = target {
             self.recent_focus.set(Some(idx));
         }
-        self.current_focus.set(index);
+        // Only notify subscribers when the value actually changes. Otherwise
+        // a redundant `blur()` call (with nothing focused) still wakes any
+        // effect reading `any_focused()`, which on Brave/Android caused the
+        // context menu to auto-close: the menu container's onblur fires
+        // shortly after open, calls blur(), and the focus-sync effect then
+        // sees `open && !any_focused` and closes the menu.
+        if *self.current_focus.peek() != target {
+            self.current_focus.set(target);
+        }
     }
 
     pub(crate) fn first_enabled_index(&self) -> Option<usize> {

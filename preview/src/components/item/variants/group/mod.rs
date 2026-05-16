@@ -1,5 +1,5 @@
 use super::super::component::*;
-use crate::components::avatar::{Avatar, AvatarImageSize};
+use crate::components::avatar::{ImageAvatar, AvatarImageSize};
 use crate::components::button::{Button, ButtonVariant};
 use dioxus::prelude::*;
 use dioxus_icons::lucide::Plus;
@@ -35,7 +35,7 @@ pub fn Demo() -> Element {
                 for (i , (username , email , avatar)) in PEOPLE.iter().enumerate() {
                     Item {
                         ItemMedia {
-                            Avatar {
+                            ImageAvatar {
                                 size: AvatarImageSize::Small,
                                 src: "{avatar}",
                                 alt: "{username}",

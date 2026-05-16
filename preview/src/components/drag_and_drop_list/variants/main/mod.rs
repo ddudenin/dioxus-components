@@ -1,5 +1,5 @@
 use super::super::component::*;
-use crate::components::avatar::{Avatar, AvatarImageSize};
+use crate::components::avatar::{ImageAvatar, AvatarImageSize};
 use dioxus::prelude::*;
 
 const INLINE_STYLE: &str = r#".dx-tasks-demo {
@@ -220,7 +220,7 @@ fn task_item(t: TaskView) -> Element {
                     }
                 }
             }
-            Avatar {
+            ImageAvatar {
                 size: AvatarImageSize::Small,
                 aria_label: "{avatar_label}",
                 style: "user-select: none;",

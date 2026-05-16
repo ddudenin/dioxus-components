@@ -1,7 +1,7 @@
 /* Calendar Container */
 .dx-calendar {
     display: flex;
-    width: 300px;
+    width: fit-content;
     max-width: 100%;
     box-sizing: border-box;
     flex-direction: row;

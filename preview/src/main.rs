@@ -1,5 +1,5 @@
 use crate::components::{
-    avatar::{Avatar, AvatarImageSize},
+    avatar::{AvatarImageSize, ImageAvatar},
     badge::{Badge, BadgeVariant, VerifiedIcon},
     button::{Button, ButtonVariant},
     checkbox::Checkbox,
@@ -24,8 +24,8 @@ use dioxus::prelude::{dioxus_router::LinkProps, *};
 use dioxus_code::{advanced::HighlightedSource, Code, CodeTheme, Theme};
 use dioxus_i18n::prelude::{use_init_i18n, I18nConfig};
 use dioxus_icons::lucide::{
-    ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronLeft, ChevronUp, Copy, ExternalLink, Mail,
-    Menu, Pause, Play, SkipBack, SkipForward, X,
+    ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronLeft, Copy, ExternalLink, Mail, Menu,
+    Pause, Play, SkipBack, SkipForward, X,
 };
 use std::str::FromStr;
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
@@ -333,15 +333,15 @@ fn Navbar() -> Element {
                             class: "dx-light-mode-only",
                             src: asset!("/assets/github-mark/github-mark.svg"),
                             alt: "GitHub",
-                            width: "24",
-                            height: "24",
+                            width: "22",
+                            height: "22",
                         }
                         img {
                             class: "dx-dark-mode-only",
                             src: asset!("/assets/github-mark/github-mark-white.svg"),
                             alt: "GitHub",
-                            width: "24",
-                            height: "24",
+                            width: "22",
+                            height: "22",
                         }
                     }
                     theme::DarkModeToggle {}
@@ -410,12 +410,11 @@ pub struct HighlightedCode {
 }
 
 #[component]
-fn CodeBlock(source: HighlightedCode, collapsed: bool) -> Element {
+fn CodeBlock(source: HighlightedCode) -> Element {
     rsx! {
         div {
             class: "dx-code-block",
             tabindex: "0",
-            "data-collapsed": "{collapsed}",
             PreviewCode { source: source.source }
         }
         CopyButton { position: "absolute", top: "0.5em", right: "0.5em" }
@@ -463,7 +462,7 @@ fn CopyIcon() -> Element {
     rsx! {
         Copy {
             width: "24px",
-            height: "25px",
+            height: "24px",
         }
     }
 }
@@ -473,7 +472,7 @@ fn CheckIcon() -> Element {
     rsx! {
         Check {
             width: "24px",
-            height: "25px",
+            height: "24px",
         }
     }
 }
@@ -551,7 +550,7 @@ fn LanguageSelect() -> Element {
                     {current_lang.read().flag()}
                     ChevronDown {
                         class: "dx-select-expand-icon",
-                        size: "20px",
+                        size: "24px",
                         stroke: "var(--secondary-color-4)",
                     }
                 }
@@ -566,36 +565,6 @@ fn ComponentCode(
     css_highlighted: HighlightedCode,
     #[props(default = ComponentType::Normal)] component_type: ComponentType,
 ) -> Element {
-    let mut collapsed = use_signal(|| true);
-
-    let expand = rsx! {
-        button {
-            aria_label: if collapsed() { "Expand code" } else { "Collapse code" },
-            width: "100%",
-            height: "2rem",
-            color: "var(--secondary-color-4)",
-            background_color: "rgba(0, 0, 0, 0)",
-            border_radius: "0 0 0.5rem 0.5rem",
-            border: "none",
-            text_align: "center",
-            r#type: "button",
-            onclick: move |_| {
-                collapsed.toggle();
-            },
-            if collapsed() {
-                ChevronDown {
-                    size: "20px",
-                    stroke: "var(--secondary-color-4)",
-                }
-            } else {
-                ChevronUp {
-                    size: "20px",
-                    stroke: "var(--secondary-color-4)",
-                }
-            }
-        }
-    };
-
     rsx! {
         Tabs {
             default_value: "main.rs",
@@ -619,79 +588,31 @@ fn ComponentCode(
                 align_items: "center",
                 TabContent {
                     index: 0usize,
+                    padding: 0,
                     value: "main.rs",
                     width: "100%",
                     position: "relative",
-                    CodeBlock { source: rs_highlighted, collapsed: collapsed() }
-                    {expand.clone()}
+                    CodeBlock { source: rs_highlighted }
                 }
                 TabContent {
                     index: 1usize,
+                    padding: 0,
                     value: "style.css",
                     width: "100%",
                     position: "relative",
-                    CodeBlock { source: css_highlighted, collapsed: collapsed() }
-                    {expand.clone()}
+                    CodeBlock { source: css_highlighted }
                 }
                 if component_type != ComponentType::Block {
                     TabContent {
                         index: 2usize,
+                        padding: 0,
                         value: "dx-components-theme.css",
                         width: "100%",
                         position: "relative",
-                        CodeBlock { source: THEME_CSS, collapsed: collapsed() }
-                        {expand.clone()}
+                        CodeBlock { source: THEME_CSS }
                     }
                 }
             }
-        }
-    }
-}
-
-#[component]
-fn CollapsibleCodeBlock(highlighted: HighlightedCode) -> Element {
-    let mut collapsed = use_signal(|| true);
-
-    let expand = rsx! {
-        button {
-            aria_label: if collapsed() { "Expand code" } else { "Collapse code" },
-            width: "100%",
-            height: "2rem",
-            color: "var(--secondary-color-4)",
-            background_color: "rgba(0, 0, 0, 0)",
-            border_radius: "0 0 0.5rem 0.5rem",
-            border: "none",
-            text_align: "center",
-            r#type: "button",
-            onclick: move |_| {
-                collapsed.toggle();
-            },
-            if collapsed() {
-                ChevronDown {
-                    size: "20px",
-                    stroke: "var(--secondary-color-4)",
-                }
-            } else {
-                ChevronUp {
-                    size: "20px",
-                    stroke: "var(--secondary-color-4)",
-                }
-            }
-        }
-    };
-
-    rsx! {
-        div {
-            width: "100%",
-            height: "100%",
-            display: "flex",
-            flex_direction: "column",
-            justify_content: "center",
-            align_items: "center",
-            border_bottom_left_radius: "0.5rem",
-            border_bottom_right_radius: "0.5rem",
-            CodeBlock { source: highlighted, collapsed: collapsed() }
-            {expand.clone()}
         }
     }
 }
@@ -958,7 +879,7 @@ fn ComponentHighlight(demo: ComponentDemoData) -> Element {
                         h2 { "Installation" }
                         p { "Use the CLI command for the common path, or copy the component files manually." }
                     }
-                    details { class: "dx-component-manual-install",
+                    details { class: "dx-component-manual-install dx-component-manual-install-code",
                         summary { "Manual installation files" }
                         ManualComponentInstallation { component, style }
                     }
@@ -1011,13 +932,17 @@ fn ComponentInstallCommand(name: &'static str) -> Element {
 #[component]
 fn ManualComponentInstallation(component: HighlightedCode, style: HighlightedCode) -> Element {
     rsx! {
-        p { class: "dx-docs-muted",
-            "Copy the component source and CSS into your app. Import the shared theme CSS once near your app root."
+        div { class: "dx-component-manual-copy",
+            p { class: "dx-docs-muted",
+                "Copy the component source and CSS into your app. Import the shared theme CSS once near your app root."
+            }
         }
-        ComponentCode {
-            rs_highlighted: component,
-            css_highlighted: style,
-            component_type: ComponentType::Normal,
+        div { class: "dx-component-manual-code",
+            ComponentCode {
+                rs_highlighted: component,
+                css_highlighted: style,
+                component_type: ComponentType::Normal,
+            }
         }
     }
 }
@@ -1076,7 +1001,7 @@ fn ComponentVariantHighlight(
                     value: "Code",
                     width: "100%",
                     position: "relative",
-                    CollapsibleCodeBlock { highlighted }
+                    CodeBlock { source: highlighted }
                 }
             }
         }
@@ -1162,7 +1087,7 @@ fn BlockComponentVariantHighlight(
                             component_type: ComponentType::Block,
                         }
                     } else {
-                        CollapsibleCodeBlock { highlighted }
+                        CodeBlock { source: highlighted }
                     }
                 }
             }
@@ -1390,7 +1315,7 @@ fn BlockSignIn() -> Element {
 fn BlockProfile() -> Element {
     rsx! {
         div { style: "display: flex; align-items: center; gap: 0.75rem;",
-            Avatar {
+            ImageAvatar {
                 size: AvatarImageSize::Medium,
                 src: "https://avatar.vercel.sh/avery-lin",
                 alt: "Avery Lin",
@@ -1489,10 +1414,54 @@ fn NotificationRow(id: String, name: String, description: String, default_on: bo
 
 #[component]
 fn BlockPlayer() -> Element {
+    const TRACK_DURATION_SECONDS: f64 = 212.0;
+    const TRACK_START_SECONDS: f64 = 84.0;
+
     let mut playing = use_signal(|| true);
+    let mut progress_seconds = use_signal(|| Some(TRACK_START_SECONDS));
+    let current_time = use_memo(move || format_track_time(progress_seconds().unwrap_or(0.0)));
+    let duration_time = format_track_time(TRACK_DURATION_SECONDS);
+
+    use_effect(move || {
+        let mut timer = document::eval(
+            "setInterval(() => {
+                dioxus.send(performance.now());
+            }, 100);",
+        );
+
+        spawn(async move {
+            let mut last_tick_ms: Option<f64> = None;
+
+            while let Ok(now_ms) = timer.recv::<f64>().await {
+                let elapsed_seconds = last_tick_ms
+                    .map(|last_ms| ((now_ms - last_ms) / 1000.0).clamp(0.0, 0.25))
+                    .unwrap_or(0.0);
+                last_tick_ms = Some(now_ms);
+
+                if !playing() {
+                    continue;
+                }
+
+                let current = progress_seconds().unwrap_or(0.0);
+                let next = if current >= TRACK_DURATION_SECONDS {
+                    0.0
+                } else {
+                    (current + elapsed_seconds).min(TRACK_DURATION_SECONDS)
+                };
+                progress_seconds.set(Some(next));
+            }
+        });
+    });
+
     rsx! {
         div { style: "display: flex; gap: 0.85rem; align-items: center;",
-            div { style: "width: 64px; height: 64px; border-radius: 0.45rem; background: linear-gradient(135deg, #ff6b6b 0%, #845ec2 60%, #5e8bdf 100%); flex-shrink: 0; box-shadow: 0 6px 18px -8px rgba(0,0,0,0.35);" }
+            img {
+                src: "https://avatar.vercel.sh/midnight-city",
+                alt: "Midnight City album art",
+                width: "64",
+                height: "64",
+                style: "width: 64px; height: 64px; border-radius: 0.45rem; object-fit: cover; flex-shrink: 0; box-shadow: 0 6px 18px -8px rgba(0,0,0,0.35);",
+            }
             div { style: "flex: 1; min-width: 0;",
                 p { style: "margin: 0; font-weight: 600; color: var(--secondary-color-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
                     "Midnight City"
@@ -1506,18 +1475,22 @@ fn BlockPlayer() -> Element {
             Slider {
                 horizontal: true,
                 min: 0.0,
-                max: 100.0,
+                max: TRACK_DURATION_SECONDS,
                 step: 1.0,
-                default_value: 38.0,
+                value: progress_seconds,
+                on_value_change: move |value| progress_seconds.set(Some(value)),
                 label: "Track progress",
             }
             div { style: "display: flex; justify-content: space-between; margin-top: 0.45rem; color: var(--secondary-color-5); font-size: 0.78rem;",
-                span { "1:24" }
-                span { "3:32" }
+                span { "{current_time}" }
+                span { "{duration_time}" }
             }
         }
         div { style: "display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 0.6rem;",
-            Button { variant: ButtonVariant::Ghost, aria_label: "Previous",
+            Button {
+                variant: ButtonVariant::Ghost,
+                aria_label: "Previous",
+                onclick: move |_| progress_seconds.set(Some(0.0)),
                 SkipBack { size: "18", fill: "currentColor", stroke_width: "1.5" }
             }
             Button {
@@ -1529,11 +1502,20 @@ fn BlockPlayer() -> Element {
                     Play { size: "18", fill: "currentColor", stroke_width: "1.5" }
                 }
             }
-            Button { variant: ButtonVariant::Ghost, aria_label: "Next",
+            Button {
+                variant: ButtonVariant::Ghost,
+                aria_label: "Next",
+                onclick: move |_| progress_seconds.set(Some(0.0)),
                 SkipForward { size: "18", fill: "currentColor", stroke_width: "1.5" }
             }
         }
     }
+}
+
+fn format_track_time(seconds: f64) -> String {
+    let seconds = if seconds.is_finite() { seconds } else { 0.0 };
+    let seconds = seconds.max(0.0).floor() as u64;
+    format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
 #[component]
@@ -1661,10 +1643,10 @@ fn BlockTabs() -> Element {
                 TabTrigger { value: "files".to_string(), index: 2usize, "Files" }
             }
             TabContent { index: 0usize, value: "members".to_string(),
-                div { style: "padding: 1.25rem 0.1rem 0.25rem; display: grid; gap: 0.85rem;",
+                div { style: "display: grid; gap: 0.85rem;",
                     for member in members.iter() {
                         div { style: "display: flex; align-items: center; gap: 0.7rem;",
-                            Avatar {
+                            ImageAvatar {
                                 size: AvatarImageSize::Small,
                                 src: "https://avatar.vercel.sh/{member.0}",
                                 alt: "{member.0}",
@@ -1687,7 +1669,7 @@ fn BlockTabs() -> Element {
                 }
             }
             TabContent { index: 1usize, value: "activity".to_string(),
-                div { style: "padding: 1.25rem 0.1rem 0.25rem; display: grid; gap: 0.85rem;",
+                div { style: "display: grid; gap: 0.85rem;",
                     for entry in activity.iter() {
                         div { style: "display: flex; align-items: baseline; gap: 0.45rem; font-size: 0.88rem;",
                             span { style: "font-weight: 600; color: var(--secondary-color-3);", "{entry.0}" }
@@ -1698,7 +1680,7 @@ fn BlockTabs() -> Element {
                 }
             }
             TabContent { index: 2usize, value: "files".to_string(),
-                div { style: "padding: 1.25rem 0.1rem 0.25rem; display: grid; gap: 0.6rem; color: var(--secondary-color-4); font-size: 0.88rem;",
+                div { style: "display: grid; gap: 0.6rem; color: var(--secondary-color-4); font-size: 0.88rem;",
                     div { style: "display: flex; align-items: center; gap: 0.5rem;",
                         span { style: "font-family: monospace; color: var(--secondary-color-5);", "/" }
                         span { "Roadmap Q2.md" }
@@ -1728,7 +1710,9 @@ fn BlockSchedule() -> Element {
             }
             Badge { variant: BadgeVariant::Outline, "Mar 2026" }
         }
-        components::calendar::variants::main::Demo {}
+        div { style: "display: grid; justify-items: center;",
+            components::calendar::variants::main::Demo {}
+        }
     }
 }
 
@@ -1786,7 +1770,7 @@ fn BlockInbox() -> Element {
             for (sender , preview , time) in messages.iter() {
                 Item { variant: ItemVariant::Outline,
                     ItemMedia { variant: ItemMediaVariant::Icon,
-                        Avatar {
+                        ImageAvatar {
                             size: AvatarImageSize::Small,
                             src: "https://avatar.vercel.sh/{sender}",
                             alt: "{sender}",
@@ -1830,7 +1814,7 @@ fn BlockTasks() -> Element {
                             span { "{t.2}" }
                         }
                     }
-                    Avatar {
+                    ImageAvatar {
                         size: AvatarImageSize::Small,
                         src: "https://avatar.vercel.sh/{t.3}",
                         alt: "{t.3}",
@@ -1861,7 +1845,7 @@ fn BlockComposer() -> Element {
     });
     rsx! {
         div { style: "display: flex; align-items: center; gap: 0.65rem; margin-bottom: 1rem;",
-            Avatar {
+            ImageAvatar {
                 size: AvatarImageSize::Small,
                 src: "https://avatar.vercel.sh/avery-lin",
                 alt: "Avery Lin",

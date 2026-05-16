@@ -255,6 +255,7 @@ pub fn DropdownMenuTrigger(props: DropdownMenuTriggerProps) -> Element {
         onblur: move |_| {
             if !ctx.focus.any_focused() {
                 ctx.focus.blur();
+                ctx.set_open.call(false);
             }
         },
     });

@@ -14,7 +14,6 @@ pub fn Demo() -> Element {
         Button {
             r#type: "button",
             "data-style": "outline",
-            style: "margin-bottom: 1.5rem;",
             onclick: move |_| open.set(true),
             "Show Dialog"
         }

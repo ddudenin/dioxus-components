@@ -1,5 +1,7 @@
 use dioxus::prelude::*;
+use dioxus_primitives::dioxus_attributes::attributes;
 use dioxus_primitives::avatar::{self, AvatarState};
+use dioxus_primitives::merge_attributes;
 
 #[css_module("/src/components/avatar/style.css")]
 struct Styles;
@@ -38,16 +40,9 @@ impl AvatarShape {
     }
 }
 
-/// The props for the [`Avatar`] component.
+/// The props for the [`Avatar`] root component.
 #[derive(Props, Clone, PartialEq)]
 pub struct AvatarProps {
-    /// The image source URL.
-    pub src: String,
-
-    /// The image alt text.
-    #[props(default)]
-    pub alt: String,
-
     /// Callback when image loads successfully.
     #[props(default)]
     pub on_load: Option<EventHandler<()>>,
@@ -82,22 +77,128 @@ pub fn Avatar(props: AvatarProps) -> Element {
         props.size.to_class(),
         props.shape.to_class()
     );
+    let base = attributes!(span {
+        class
+    });
+    let merged = merge_attributes(vec![base, props.attributes]);
 
     rsx! {
         avatar::Avatar {
-            class,
             on_load: props.on_load,
             on_error: props.on_error,
             on_state_change: props.on_state_change,
+            attributes: merged,
+            {props.children}
+        }
+    }
+}
+
+#[derive(Props, Clone, PartialEq)]
+pub struct AvatarImageProps {
+    #[props(default)]
+    pub id: ReadSignal<Option<String>>,
+
+    pub src: String,
+
+    #[props(default)]
+    pub alt: String,
+
+    #[props(extends = GlobalAttributes)]
+    pub attributes: Vec<Attribute>,
+}
+
+#[component]
+pub fn AvatarImage(props: AvatarImageProps) -> Element {
+    let base = attributes!(img {
+        class: Styles::dx_avatar_image,
+        draggable: "false",
+    });
+    let merged = merge_attributes(vec![base, props.attributes]);
+
+    rsx! {
+        avatar::AvatarImage {
+            id: props.id,
+            src: props.src,
+            alt: props.alt,
+            attributes: merged,
+        }
+    }
+}
+
+#[derive(Props, Clone, PartialEq)]
+pub struct AvatarFallbackProps {
+    #[props(extends = GlobalAttributes)]
+    pub attributes: Vec<Attribute>,
+
+    pub children: Element,
+}
+
+#[component]
+pub fn AvatarFallback(props: AvatarFallbackProps) -> Element {
+    let base = attributes!(span {
+        class: Styles::dx_avatar_fallback,
+    });
+    let merged = merge_attributes(vec![base, props.attributes]);
+
+    rsx! {
+        avatar::AvatarFallback {
+            attributes: merged,
+            {props.children}
+        }
+    }
+}
+
+/// The props for the [`ImageAvatar`] convenience component.
+#[derive(Props, Clone, PartialEq)]
+pub struct ImageAvatarProps {
+    /// The image source URL.
+    pub src: String,
+
+    /// The image alt text.
+    #[props(default)]
+    pub alt: String,
+
+    /// Callback when image loads successfully.
+    #[props(default)]
+    pub on_load: Option<EventHandler<()>>,
+
+    /// Callback when image fails to load.
+    #[props(default)]
+    pub on_error: Option<EventHandler<()>>,
+
+    /// Callback when the avatar state changes.
+    #[props(default)]
+    pub on_state_change: Option<EventHandler<AvatarState>>,
+
+    #[props(default)]
+    pub size: AvatarImageSize,
+
+    #[props(default)]
+    pub shape: AvatarShape,
+
+    /// Additional attributes for the avatar element.
+    #[props(extends = GlobalAttributes)]
+    pub attributes: Vec<Attribute>,
+
+    /// The fallback content shown while the image is loading or if it fails to load.
+    pub children: Element,
+}
+
+#[component]
+pub fn ImageAvatar(props: ImageAvatarProps) -> Element {
+    rsx! {
+        Avatar {
+            on_load: props.on_load,
+            on_error: props.on_error,
+            on_state_change: props.on_state_change,
+            size: props.size,
+            shape: props.shape,
             attributes: props.attributes,
-            avatar::AvatarImage {
-                class: Styles::dx_avatar_image,
+            AvatarImage {
                 src: props.src,
                 alt: props.alt,
-                draggable: "false",
             }
-            avatar::AvatarFallback {
-                class: Styles::dx_avatar_fallback,
+            AvatarFallback {
                 {props.children}
             }
         }

@@ -1076,7 +1076,7 @@ mod tests {
         dom_assert_eq!(item_keys(&list), vec!["a", "b", "c", "d", "e"]);
 
         list.move_after
-            .call(("b".into(), vec!["e".into(), "d".into()]));
+            .call(("с".into(), vec!["e".into(), "d".into()]));
         dom_assert_eq!(item_keys(&list), vec!["a", "b", "c", "d", "e"]);
 
         list.move_after

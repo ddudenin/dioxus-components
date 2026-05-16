@@ -35,8 +35,7 @@ impl ComponentCategory {
 pub fn category_of(name: &str) -> ComponentCategory {
     match name {
         "button" | "input" | "textarea" | "label" | "checkbox" | "switch" | "radio_group"
-        | "toggle" | "toggle_group" | "select" | "slider" | "calendar"
-        | "date_picker"
+        | "toggle" | "toggle_group" | "select" | "slider" | "calendar" | "date_picker"
         | "color_picker" => ComponentCategory::Forms,
         "navbar" | "sidebar" | "tabs" | "pagination" | "menubar" | "toolbar" | "context_menu"
         | "dropdown_menu" => ComponentCategory::Navigation,

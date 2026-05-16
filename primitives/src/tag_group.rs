@@ -320,7 +320,7 @@ pub struct TagListProps {
     #[props(extends = GlobalAttributes)]
     pub attributes: Vec<Attribute>,
 
-    /// The children of the tag list component. Defaults to a [`Tag`] per item from [`TagGroup::items`].
+    /// The children of the tag list component. Defaults to a [`Tag`] per item from [`TagGroupProps::items`].
     #[props(default)]
     pub children: Option<Element>,
 }

@@ -5,16 +5,24 @@ const BASE = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:8080";
 const URL = `${BASE}/component/?name=tag_group&`;
 const LOAD_TIMEOUT = 20 * 60 * 1000;
 
+function multiVariant(page: Page) {
+  return page
+    .locator(".dx-component-variant")
+    .filter({ has: page.getByRole("heading", { name: "multi" }) });
+}
+
 function tag(page: Page, name: string) {
-  return page.getByRole("row", { name });
+  return multiVariant(page).getByRole("row", { name });
 }
 
 async function loadTagGroup(page: Page) {
   await page.goto(URL, { timeout: LOAD_TIMEOUT });
-  await expect(page.getByText("Labels", { exact: true })).toBeVisible({
+  await expect(
+    multiVariant(page).getByText("Labels", { exact: true }),
+  ).toBeVisible({
     timeout: 30000,
   });
-  await expect(page.getByRole("grid")).toBeVisible();
+  await expect(multiVariant(page).getByRole("grid")).toBeVisible();
 }
 
 test.describe("Tag group", () => {
@@ -133,7 +141,9 @@ test.describe("Tag group", () => {
       const bug = tag(page, "bug");
       await expect(bug).toBeVisible();
 
-      await page.getByRole("button", { name: "Remove item bug" }).click();
+      await multiVariant(page)
+        .getByRole("button", { name: "Remove item bug" })
+        .click();
       await expect(bug).toHaveCount(0);
     });
   });
@@ -143,7 +153,7 @@ test.describe("Tag group", () => {
       page,
     }) => {
       const results = await new AxeBuilder({ page })
-        .include('[role="grid"]')
+        .include(".dx-component-variant [role=\"grid\"]")
         .disableRules(["color-contrast"])
         .analyze();
       expect(results.violations).toEqual([]);

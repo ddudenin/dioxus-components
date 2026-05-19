@@ -15,13 +15,14 @@ pub fn Demo() -> Element {
         }
     });
 
-    let mut value = use_signal(|| Some("core".to_string()));
+    let mut values = use_signal(|| vec!["bug".to_string()]);
+    let values_signal = use_memo(move || Some(values()));
 
     rsx! {
-        TagGroup {
+        TagGroupMulti {
             label: "Labels",
-            value: Some(value.into()),
-            on_value_change: move |v| value.set(v),
+            values: values_signal,
+            on_values_change: move |v| values.set(v),
             allow_empty_selection: false,
             allows_removing: true,
             {tags}

@@ -206,7 +206,7 @@ examples!(
     slider[dynamic_range, range],
     switch,
     tabs,
-    tag_group,
+    tag_group[multi],
     textarea[outline, fade, ghost],
     toast,
     toggle,

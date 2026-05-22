@@ -4,6 +4,12 @@
   gap: 0.5rem;
 }
 
+.dx-tag-group-label {
+  padding: 4px 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
 .dx-tag-list {
   display: flex;
   flex-wrap: wrap;
@@ -57,8 +63,7 @@
 }
 
 .dx-remove-button:hover {
-  background-color: var(--light, var(--primary-color-5))
-    var(--dark, var(--primary-color-6));
+  background-color: var(--light, var(--primary-color-5)) var(--dark, var(--primary-color-6));
   color: var(--secondary-color-2);
 }
 
@@ -69,4 +74,10 @@
 .dx-remove-button:focus-visible {
   outline: 2px solid var(--focused-border-color);
   outline-offset: 2px;
+}
+
+.dx-tag-group-empty {
+  padding: 4px 0;
+  font-size: 0.875rem;
+  text-align: center;
 }

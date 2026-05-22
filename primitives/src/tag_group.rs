@@ -9,7 +9,7 @@ use crate::{
     },
     selectable::SelectionMode,
     selection::{option_text_value, remove_option, sync_option, OptionState, RcPartialEqValue},
-    use_controlled, use_effect_cleanup, use_id_or, use_unique_id,
+    use_controlled, use_effect_with_cleanup, use_id_or, use_unique_id,
 };
 
 /// Selection and focus state for a tag group.
@@ -30,29 +30,29 @@ pub(crate) struct TagSelectableContext {
 #[derive(Clone, Copy)]
 pub struct TagGroupCtx {
     labeled_by: Signal<Option<String>>,
-    allows_removing: ReadSignal<bool>,
     escape_clears_selection: ReadSignal<bool>,
-    disabled_values: ReadSignal<Vec<RcPartialEqValue>>,
     removed: Signal<Vec<RcPartialEqValue>>,
-    render_empty_state: Callback<(), Element>,
+}
+
+/// Provided by [`TagList`] for [`TagGroupEmpty`].
+#[derive(Clone, Copy)]
+struct TagListCtx {
+    show_empty: Memo<bool>,
 }
 
 #[derive(Clone)]
 struct TagOptionCtx {
     value: RcPartialEqValue,
     index: ReadSignal<usize>,
+    is_removable: ReadSignal<bool>,
 }
 
-struct TagGroupSharedProps<T: Clone + PartialEq + 'static> {
-    label: Option<String>,
+struct TagGroupSharedProps {
     disabled: ReadSignal<bool>,
     selectable: ReadSignal<bool>,
-    disabled_values: ReadSignal<Vec<T>>,
     allow_empty_selection: ReadSignal<bool>,
     escape_clears_selection: ReadSignal<bool>,
-    allows_removing: ReadSignal<bool>,
     roving_loop: ReadSignal<bool>,
-    render_empty_state: Callback<(), Element>,
     attributes: Vec<Attribute>,
     children: Element,
 }
@@ -64,34 +64,26 @@ struct TagGroupSelection {
     selection_mode: SelectionMode,
 }
 
-impl<T: Clone + PartialEq + 'static> TagGroupSharedProps<T> {
-    fn from_single(props: &TagGroupProps<T>) -> Self {
+impl TagGroupSharedProps {
+    fn from_single<T: Clone + PartialEq + 'static>(props: &TagGroupProps<T>) -> Self {
         Self {
-            label: props.label.clone(),
             disabled: props.disabled,
             selectable: props.selectable,
-            disabled_values: props.disabled_values,
             allow_empty_selection: props.allow_empty_selection,
             escape_clears_selection: props.escape_clears_selection,
-            allows_removing: props.allows_removing,
             roving_loop: props.roving_loop,
-            render_empty_state: props.render_empty_state,
             attributes: props.attributes.clone(),
             children: props.children.clone(),
         }
     }
 
-    fn from_multi(props: &TagGroupMultiProps<T>) -> Self {
+    fn from_multi<T: Clone + PartialEq + 'static>(props: &TagGroupMultiProps<T>) -> Self {
         Self {
-            label: props.label.clone(),
             disabled: props.disabled,
             selectable: props.selectable,
-            disabled_values: props.disabled_values,
             allow_empty_selection: props.allow_empty_selection,
             escape_clears_selection: props.escape_clears_selection,
-            allows_removing: props.allows_removing,
             roving_loop: props.roving_loop,
-            render_empty_state: props.render_empty_state,
             attributes: props.attributes.clone(),
             children: props.children.clone(),
         }
@@ -99,11 +91,6 @@ impl<T: Clone + PartialEq + 'static> TagGroupSharedProps<T> {
 }
 
 impl TagGroupCtx {
-    /// Whether tags in this group show a remove control and can be deleted.
-    pub fn is_removable(&self) -> bool {
-        (self.allows_removing)()
-    }
-
     fn remove_value(&mut self, selectable: TagSelectableContext, value: RcPartialEqValue) {
         let mut removed = self.removed.write();
         if removed.iter().any(|v| v == &value) {
@@ -164,8 +151,10 @@ impl TagSelectableContext {
         }
     }
 
+    /// Delete/Backspace targets: all selected tags when the focused tag is selected,
+    /// otherwise only the focused tag (even if other tags remain selected).
     fn keyboard_remove_values(&self, focused: RcPartialEqValue) -> Vec<RcPartialEqValue> {
-        if self.selection_mode == SelectionMode::Multiple && !self.values.read().is_empty() {
+        if self.is_selected(&focused) {
             self.values.read().clone()
         } else {
             vec![focused]
@@ -188,10 +177,6 @@ pub struct TagGroupProps<T: Clone + PartialEq + 'static = String> {
     #[props(default)]
     pub on_value_change: Callback<Option<T>>,
 
-    /// Optional visible label for the group, referenced by the tag list via `aria-labelledby`.
-    #[props(default)]
-    pub label: Option<String>,
-
     /// Whether the entire tag group is disabled.
     #[props(default)]
     pub disabled: ReadSignal<bool>,
@@ -199,10 +184,6 @@ pub struct TagGroupProps<T: Clone + PartialEq + 'static = String> {
     /// Whether tags can be selected. When `false`, tags remain focusable but not selectable.
     #[props(default = ReadSignal::new(Signal::new(true)))]
     pub selectable: ReadSignal<bool>,
-
-    /// Values that cannot be selected or focused.
-    #[props(default = ReadSignal::new(Signal::new(Vec::new())))]
-    pub disabled_values: ReadSignal<Vec<T>>,
 
     /// Whether clicking or pressing Space/Enter on the selected tag clears the selection.
     #[props(default = ReadSignal::new(Signal::new(true)))]
@@ -212,17 +193,9 @@ pub struct TagGroupProps<T: Clone + PartialEq + 'static = String> {
     #[props(default = ReadSignal::new(Signal::new(true)))]
     pub escape_clears_selection: ReadSignal<bool>,
 
-    /// Whether tags can be removed via [`TagRemoveButton`] or Delete/Backspace.
-    #[props(default)]
-    pub allows_removing: ReadSignal<bool>,
-
     /// Whether keyboard focus loops from the last tag to the first and vice versa.
     #[props(default = ReadSignal::new(Signal::new(true)))]
     pub roving_loop: ReadSignal<bool>,
-
-    /// Content rendered inside [`TagList`] when there are no tags.
-    #[props(default = Callback::new(|_| rsx! { div { "No tags" } }))]
-    pub render_empty_state: Callback<(), Element>,
 
     /// Additional attributes for the root element.
     #[props(extends = GlobalAttributes)]
@@ -247,10 +220,6 @@ pub struct TagGroupMultiProps<T: Clone + PartialEq + 'static = String> {
     #[props(default)]
     pub on_values_change: Callback<Vec<T>>,
 
-    /// Optional visible label for the group, referenced by the tag list via `aria-labelledby`.
-    #[props(default)]
-    pub label: Option<String>,
-
     /// Whether the entire tag group is disabled.
     #[props(default)]
     pub disabled: ReadSignal<bool>,
@@ -258,10 +227,6 @@ pub struct TagGroupMultiProps<T: Clone + PartialEq + 'static = String> {
     /// Whether tags can be selected. When `false`, tags remain focusable but not selectable.
     #[props(default = ReadSignal::new(Signal::new(true)))]
     pub selectable: ReadSignal<bool>,
-
-    /// Values that cannot be selected or focused.
-    #[props(default = ReadSignal::new(Signal::new(Vec::new())))]
-    pub disabled_values: ReadSignal<Vec<T>>,
 
     /// Whether clicking or pressing Space/Enter on a selected tag deselects it.
     /// When `false`, the last remaining selected tag cannot be deselected.
@@ -272,17 +237,9 @@ pub struct TagGroupMultiProps<T: Clone + PartialEq + 'static = String> {
     #[props(default = ReadSignal::new(Signal::new(true)))]
     pub escape_clears_selection: ReadSignal<bool>,
 
-    /// Whether tags can be removed via [`TagRemoveButton`] or Delete/Backspace.
-    #[props(default)]
-    pub allows_removing: ReadSignal<bool>,
-
     /// Whether keyboard focus loops from the last tag to the first and vice versa.
     #[props(default = ReadSignal::new(Signal::new(true)))]
     pub roving_loop: ReadSignal<bool>,
-
-    /// Content rendered inside [`TagList`] when there are no tags.
-    #[props(default = Callback::new(|_| rsx! { div { "No tags" } }))]
-    pub render_empty_state: Callback<(), Element>,
 
     /// Additional attributes for the root element.
     #[props(extends = GlobalAttributes)]
@@ -300,14 +257,14 @@ pub struct TagGroupMultiProps<T: Clone + PartialEq + 'static = String> {
 ///
 /// ```rust
 /// use dioxus::prelude::*;
-/// use dioxus_primitives::tag_group::{TagGroup, TagList, TagOption};
+/// use dioxus_primitives::tag_group::{TagGroup, TagGroupLabel, TagList, TagOption};
 ///
 /// #[component]
 /// fn Demo() -> Element {
 ///     rsx! {
 ///         TagGroup::<&'static str> {
-///             label: "Labels",
 ///             default_value: Some("bug"),
+///             TagGroupLabel { "Labels" }
 ///             TagList {
 ///                 TagOption::<&'static str> { index: 0usize, value: "bug", "bug" }
 ///                 TagOption::<&'static str> { index: 1usize, value: "feature", disabled: true, "feature" }
@@ -338,7 +295,7 @@ pub fn TagGroup<T: Clone + PartialEq + 'static>(props: TagGroupProps<T>) -> Elem
         on_change.call(None);
     });
 
-    tag_group_inner(
+    use_tag_group_inner(
         TagGroupSharedProps::from_single(&props),
         TagGroupSelection {
             values,
@@ -357,14 +314,14 @@ pub fn TagGroup<T: Clone + PartialEq + 'static>(props: TagGroupProps<T>) -> Elem
 ///
 /// ```rust
 /// use dioxus::prelude::*;
-/// use dioxus_primitives::tag_group::{TagGroupMulti, TagList, TagOption};
+/// use dioxus_primitives::tag_group::{TagGroupLabel, TagGroupMulti, TagList, TagOption};
 ///
 /// #[component]
 /// fn Demo() -> Element {
 ///     rsx! {
 ///         TagGroupMulti::<&'static str> {
-///             label: "Labels",
 ///             default_values: vec!["bug"],
+///             TagGroupLabel { "Labels" }
 ///             TagList {
 ///                 TagOption::<&'static str> { index: 0usize, value: "bug", "bug" }
 ///                 TagOption::<&'static str> { index: 1usize, value: "feature", "feature" }
@@ -404,7 +361,7 @@ pub fn TagGroupMulti<T: Clone + PartialEq + 'static>(props: TagGroupMultiProps<T
         set_multi_internal.call(Vec::new());
     });
 
-    tag_group_inner(
+    use_tag_group_inner(
         TagGroupSharedProps::from_multi(&props),
         TagGroupSelection {
             values,
@@ -415,20 +372,13 @@ pub fn TagGroupMulti<T: Clone + PartialEq + 'static>(props: TagGroupMultiProps<T
     )
 }
 
-fn tag_group_inner<T: Clone + PartialEq + 'static>(
-    shared: TagGroupSharedProps<T>,
-    selection: TagGroupSelection,
-) -> Element {
+fn use_tag_group_inner(shared: TagGroupSharedProps, selection: TagGroupSelection) -> Element {
     let TagGroupSharedProps {
-        label,
         disabled,
         selectable,
-        disabled_values,
         allow_empty_selection,
         escape_clears_selection,
-        allows_removing,
         roving_loop,
-        render_empty_state,
         attributes,
         children,
     } = shared;
@@ -438,17 +388,6 @@ fn tag_group_inner<T: Clone + PartialEq + 'static>(
         clear_selection,
         selection_mode,
     } = selection;
-
-    let label_id = use_unique_id();
-    let disabled_values = use_memo(move || {
-        disabled_values
-            .read()
-            .iter()
-            .cloned()
-            .map(RcPartialEqValue::new)
-            .collect::<Vec<_>>()
-    });
-    let disabled_values = ReadSignal::new(disabled_values);
 
     let options: Signal<Vec<OptionState>> = use_signal(Vec::default);
     let focus = use_focus_provider(roving_loop);
@@ -466,27 +405,74 @@ fn tag_group_inner<T: Clone + PartialEq + 'static>(
         allow_empty_selection,
     });
 
-    let mut ctx = TagGroupCtx {
+    let ctx = TagGroupCtx {
         labeled_by: Signal::new(None),
-        allows_removing,
         escape_clears_selection,
-        disabled_values,
         removed,
-        render_empty_state,
     };
-    ctx.labeled_by.set(label.as_ref().map(|_| label_id()));
     use_context_provider(|| ctx);
 
     rsx! {
         div {
             ..attributes,
-            if let Some(label) = label {
-                span {
-                    id: label_id(),
-                    {label}
-                }
-            }
             {children}
+        }
+    }
+}
+
+/// Props for [`TagGroupLabel`].
+#[derive(Props, Clone, PartialEq)]
+pub struct TagGroupLabelProps {
+    /// Optional ID for the label element.
+    #[props(default)]
+    pub id: ReadSignal<Option<String>>,
+
+    /// Additional attributes for the label.
+    #[props(extends = GlobalAttributes)]
+    pub attributes: Vec<Attribute>,
+
+    /// Label content referenced by [`TagList`] via `aria-labelledby`.
+    pub children: Element,
+}
+
+/// Visible label for a [`TagGroup`] or [`TagGroupMulti`], wired to the tag list through `aria-labelledby`.
+///
+/// Must be used inside [`TagGroup`] or [`TagGroupMulti`].
+///
+/// ## Example
+///
+/// ```rust
+/// use dioxus::prelude::*;
+/// use dioxus_primitives::tag_group::{TagGroup, TagGroupLabel, TagList, TagOption};
+///
+/// #[component]
+/// fn Demo() -> Element {
+///     rsx! {
+///         TagGroup::<&'static str> {
+///             TagGroupLabel { "Labels" }
+///             TagList {
+///                 TagOption::<&'static str> { index: 0usize, value: "bug", "bug" }
+///             }
+///         }
+///     }
+/// }
+/// ```
+#[component]
+pub fn TagGroupLabel(props: TagGroupLabelProps) -> Element {
+    let mut ctx: TagGroupCtx = use_context();
+
+    let id = use_unique_id();
+    let id = use_id_or(id, props.id);
+
+    use_effect(move || {
+        ctx.labeled_by.set(Some(id()));
+    });
+
+    rsx! {
+        div {
+            id: id(),
+            ..props.attributes,
+            {props.children}
         }
     }
 }
@@ -498,7 +484,7 @@ pub struct TagListProps {
     #[props(extends = GlobalAttributes)]
     pub attributes: Vec<Attribute>,
 
-    /// [`TagOption`] children rendered as rows in the grid.
+    /// [`TagOption`] children and an optional [`TagGroupEmpty`].
     pub children: Element,
 }
 
@@ -506,27 +492,85 @@ pub struct TagListProps {
 #[component]
 pub fn TagList(props: TagListProps) -> Element {
     let ctx = use_context::<TagGroupCtx>();
-    let selectable = use_context::<TagSelectableContext>();
+    let mut selectable = use_context::<TagSelectableContext>();
     let mut mounted = use_signal(|| false);
     use_effect(move || mounted.set(true));
-    let is_empty = use_memo(move || mounted() && ctx.is_empty(selectable));
+    let show_empty = use_memo(move || mounted() && ctx.is_empty(selectable));
+
+    use_context_provider(|| TagListCtx { show_empty });
+
+    let list_tabbable = use_memo(move || {
+        !selectable.focus.any_focused() && selectable.focus.first_enabled_index().is_some()
+    });
 
     rsx! {
         div {
             role: "grid",
             aria_labelledby: ctx.labeled_by,
-            tabindex: "-1",
+            tabindex: if list_tabbable() { "0" } else { "-1" },
             aria_multiselectable: if selectable.selection_mode == SelectionMode::Multiple
                 && (selectable.selectable)()
             {
                 "true"
             },
             aria_colcount: "1",
+            onfocus: move |_| {
+                if !selectable.focus.any_focused() {
+                    selectable.focus.focus_first();
+                }
+            },
             ..props.attributes,
             {props.children}
-            if is_empty() {
-                {ctx.render_empty_state.call(())}
-            }
+        }
+    }
+}
+
+/// Props for [`TagGroupEmpty`].
+#[derive(Props, Clone, PartialEq)]
+pub struct TagGroupEmptyProps {
+    /// Additional attributes for the empty state element.
+    #[props(extends = GlobalAttributes)]
+    pub attributes: Vec<Attribute>,
+
+    /// Content shown when every tag in the list has been removed.
+    pub children: Element,
+}
+
+/// Renders when there are no tags left in the [`TagList`].
+///
+/// Must be used inside [`TagList`].
+///
+/// ## Example
+///
+/// ```rust
+/// use dioxus::prelude::*;
+/// use dioxus_primitives::tag_group::{TagGroup, TagGroupEmpty, TagList, TagOption};
+///
+/// #[component]
+/// fn Demo() -> Element {
+///     rsx! {
+///         TagGroup::<&'static str> {
+///             TagList {
+///                 TagGroupEmpty { "No tags" }
+///                 TagOption::<&'static str> { index: 0usize, value: "bug", "bug" }
+///             }
+///         }
+///     }
+/// }
+/// ```
+#[component]
+pub fn TagGroupEmpty(props: TagGroupEmptyProps) -> Element {
+    let list = use_context::<TagListCtx>();
+
+    if !(list.show_empty)() {
+        return rsx! {};
+    }
+
+    rsx! {
+        div {
+            role: "presentation",
+            ..props.attributes,
+            {props.children}
         }
     }
 }
@@ -552,12 +596,30 @@ pub struct TagOptionProps<T: Clone + PartialEq + 'static = String> {
     #[props(default)]
     pub disabled: ReadSignal<bool>,
 
+    /// Whether this tag can be removed via [`TagRemoveButton`] or Delete/Backspace.
+    #[props(default)]
+    pub is_removable: ReadSignal<bool>,
+
     /// Additional attributes for the tag row element.
     #[props(extends = GlobalAttributes)]
     pub attributes: Vec<Attribute>,
 
-    /// The tag label and optional [`TagRemoveButton`].
+    /// The tag label; add [`TagRemoveButton`] when [`TagOptionProps::is_removable`] is `true`.
     pub children: Element,
+}
+
+/// After a tag is removed, restore roving focus when the deleted row had focus.
+fn redirect_focus_after_tag_removal(mut focus: FocusState, had_focus: bool) {
+    if !had_focus || focus.current_focus().is_some() {
+        return;
+    }
+    focus.focus_next();
+    if focus.current_focus().is_none() {
+        focus.focus_prev();
+    }
+    if focus.current_focus().is_none() {
+        focus.focus_first();
+    }
 }
 
 fn tag_option_on_keydown(
@@ -625,6 +687,7 @@ pub fn TagOption<T: Clone + PartialEq + 'static>(props: TagOptionProps<T>) -> El
     let mut selectable = use_context::<TagSelectableContext>();
     let index = props.index;
     let option_disabled = props.disabled;
+    let is_removable = props.is_removable;
     let text_value_signal = props.text_value;
     let option_value = props.value;
     let value = use_memo(move || RcPartialEqValue::new(option_value.cloned()));
@@ -632,51 +695,48 @@ pub fn TagOption<T: Clone + PartialEq + 'static>(props: TagOptionProps<T>) -> El
 
     let disabled = {
         let root_disabled = selectable.disabled;
-        let group_disabled_values = ctx.disabled_values;
-        use_memo(move || {
-            root_disabled.cloned()
-                || option_disabled.cloned()
-                || group_disabled_values.read().iter().any(|v| v == &value())
-        })
+        use_memo(move || root_disabled.cloned() || option_disabled.cloned())
     };
 
-    let generated_id = use_unique_id();
-    let id = use_id_or(generated_id, props.id);
-    let mut previous_id: Signal<Option<String>> = use_signal(|| None);
+    let id = use_id_or(use_unique_id(), props.id);
     let text_value = use_memo(move || {
         option_text_value(&*option_value.read(), text_value_signal(), "TagOption")
     });
 
     use_effect(move || {
+        if !is_removed() {
+            return;
+        }
+        let idx = index();
+        let had_focus = selectable.focus.is_focused(idx);
         let option_id = id();
-        let stale_id = previous_id
-            .peek()
-            .as_ref()
-            .filter(|stale_id| *stale_id != &option_id)
-            .cloned();
-        if let Some(stale_id) = stale_id {
-            remove_option(selectable.options, &stale_id);
-        }
-        sync_option(
-            selectable.options,
-            OptionState {
-                tab_index: index(),
-                value: value(),
-                text_value: text_value.cloned(),
-                id: option_id.clone(),
-                disabled: disabled(),
-            },
-        );
-        previous_id.set(Some(option_id));
+        remove_option(selectable.options, &option_id);
+        selectable.focus.remove_item(idx);
+        redirect_focus_after_tag_removal(selectable.focus, had_focus);
     });
 
-    use_effect_cleanup(move || {
-        if let Some(option_id) = previous_id.peek().as_ref() {
-            remove_option(selectable.options, option_id);
+    use_effect_with_cleanup(move || {
+        let option_id = id();
+        if !is_removed() {
+            sync_option(
+                selectable.options,
+                OptionState {
+                    tab_index: index(),
+                    value: value(),
+                    text_value: text_value.cloned(),
+                    id: option_id.clone(),
+                    disabled: disabled(),
+                },
+            );
+        }
+        move || {
+            remove_option(selectable.options, &option_id);
         }
     });
 
-    use_focus_entry_disabled(selectable.focus, index, move || disabled.cloned());
+    use_focus_entry_disabled(selectable.focus, index, move || {
+        disabled.cloned() || is_removed()
+    });
 
     let selected =
         use_memo(move || selectable.selectable.cloned() && selectable.is_selected(&value()));
@@ -684,6 +744,7 @@ pub fn TagOption<T: Clone + PartialEq + 'static>(props: TagOptionProps<T>) -> El
     use_context_provider(|| TagOptionCtx {
         value: value(),
         index,
+        is_removable,
     });
 
     let tabindex = use_memo(move || {
@@ -698,7 +759,6 @@ pub fn TagOption<T: Clone + PartialEq + 'static>(props: TagOptionProps<T>) -> El
     });
 
     let onmounted = use_focus_controlled_item_disabled(index, move || disabled.cloned());
-    let removable = ctx.allows_removing;
 
     if is_removed() {
         return rsx! {};
@@ -722,7 +782,14 @@ pub fn TagOption<T: Clone + PartialEq + 'static>(props: TagOptionProps<T>) -> El
                 }
             },
             onkeydown: move |e| {
-                tag_option_on_keydown(e, ctx, selectable, value(), disabled(), removable());
+                tag_option_on_keydown(
+                    e,
+                    ctx,
+                    selectable,
+                    value(),
+                    disabled(),
+                    is_removable.cloned(),
+                );
             },
             ..props.attributes,
             div {
@@ -735,7 +802,9 @@ pub fn TagOption<T: Clone + PartialEq + 'static>(props: TagOptionProps<T>) -> El
     }
 }
 
-/// Remove button for the enclosing [`TagOption`]. Renders nothing when removal is disabled.
+/// Remove button for the enclosing [`TagOption`].
+///
+/// Must be used inside [`TagOption`] with [`TagOptionProps::is_removable`] set to `true`.
 #[component]
 pub fn TagRemoveButton(
     #[props(extends = GlobalAttributes)] attributes: Vec<Attribute>,
@@ -744,7 +813,8 @@ pub fn TagRemoveButton(
     let mut ctx: TagGroupCtx = use_context();
     let selectable = use_context::<TagSelectableContext>();
     let option: TagOptionCtx = use_context();
-    if !ctx.is_removable() {
+
+    if !option.is_removable.cloned() {
         return rsx! {};
     }
 

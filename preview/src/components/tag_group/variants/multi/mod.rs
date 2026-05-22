@@ -10,6 +10,7 @@ pub fn Demo() -> Element {
             Tag {
                 index,
                 value: t,
+                is_removable: true,
                 "{t}"
             }
         }
@@ -20,11 +21,11 @@ pub fn Demo() -> Element {
 
     rsx! {
         TagGroupMulti {
-            label: "Labels",
             values: values_signal,
             on_values_change: move |v| values.set(v),
             allow_empty_selection: false,
-            allows_removing: true,
+            TagGroupLabel { "Labels" }
+            TagGroupEmpty { "No tags" }
             {tags}
         }
     }

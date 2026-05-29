@@ -16,18 +16,18 @@ function tag(page: Page, name: string) {
 }
 
 async function loadTagGroup(page: Page) {
-  await page.goto(URL, { timeout: LOAD_TIMEOUT });
-  await expect(
-    multiVariant(page).getByText("Labels", { exact: true }),
-  ).toBeVisible({
+  await page.goto(URL, { timeout: LOAD_TIMEOUT, waitUntil: "networkidle" });
+  const variant = multiVariant(page);
+  await variant.scrollIntoViewIfNeeded();
+  await expect(variant.getByText("Labels", { exact: true })).toBeVisible({
     timeout: 30000,
   });
-  await expect(multiVariant(page).getByRole("grid")).toBeVisible();
+  await expect(variant.getByRole("grid")).toBeVisible();
 }
 
 test.describe("Tag group", () => {
   // One page load at a time — parallel navigations contend with the preview webServer build.
-  test.describe.configure({ mode: "serial" });
+  test.describe.configure({ mode: "serial", timeout: LOAD_TIMEOUT });
 
   test.beforeEach(async ({ page }) => {
     await loadTagGroup(page);
@@ -153,7 +153,7 @@ test.describe("Tag group", () => {
       page,
     }) => {
       const results = await new AxeBuilder({ page })
-        .include(".dx-component-variant [role=\"grid\"]")
+        .include('.dx-component-variant [role="grid"]')
         .disableRules(["color-contrast"])
         .analyze();
       expect(results.violations).toEqual([]);

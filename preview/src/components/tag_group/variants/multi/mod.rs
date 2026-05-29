@@ -6,10 +6,12 @@ use super::super::component::*;
 pub fn Demo() -> Element {
     let labels = ["bug", "feature", "core", "desktop", "example", "duplicate"];
     let tags = labels.iter().enumerate().map(|(index, &t)| {
+        let disabled = matches!(t, "feature" | "example");
         rsx! {
             Tag {
                 index,
                 value: t,
+                disabled,
                 is_removable: true,
                 "{t}"
             }

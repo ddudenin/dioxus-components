@@ -3,23 +3,20 @@
 use dioxus::prelude::*;
 
 use crate::{
-    focus::{
-        use_focus_controlled_item_disabled, use_focus_entry_disabled, use_focus_provider,
-        FocusState,
-    },
+    focus::{use_focus_controlled_item_disabled, use_focus_provider, FocusState},
     selectable::SelectionMode,
-    selection::{option_text_value, remove_option, sync_option, OptionState, RcPartialEqValue},
-    use_controlled, use_effect_with_cleanup, use_id_or, use_unique_id,
+    selection::{option_text_value, RcPartialEqValue},
+    use_controlled, use_effect_cleanup, use_effect_with_cleanup, use_id_or, use_unique_id,
 };
 
 /// Selection and focus state for a tag group.
 #[derive(Clone, Copy)]
-pub(crate) struct TagSelectableContext {
+struct TagGroupState {
     values: Memo<Vec<RcPartialEqValue>>,
     set_value: Callback<RcPartialEqValue>,
     clear_selection: Callback<()>,
     selection_mode: SelectionMode,
-    options: Signal<Vec<OptionState>>,
+    items: Signal<Vec<TagItem>>,
     focus: FocusState,
     disabled: ReadSignal<bool>,
     selectable: ReadSignal<bool>,
@@ -31,7 +28,7 @@ pub(crate) struct TagSelectableContext {
 pub struct TagGroupCtx {
     labeled_by: Signal<Option<String>>,
     escape_clears_selection: ReadSignal<bool>,
-    removed: Signal<Vec<RcPartialEqValue>>,
+    state: TagGroupState,
 }
 
 /// Provided by [`TagList`] for [`TagGroupEmpty`].
@@ -42,9 +39,22 @@ struct TagListCtx {
 
 #[derive(Clone)]
 struct TagOptionCtx {
+    id: Signal<String>,
+    /// Number of mounted [`TagRemoveButton`]s in this tag. The tag is removable
+    /// when this is greater than zero, so removability is driven purely by the
+    /// presence of a remove button rather than a separate prop.
+    remove_button_count: Signal<usize>,
+}
+
+#[derive(Clone, PartialEq)]
+struct TagItem {
+    id: String,
+    index: usize,
     value: RcPartialEqValue,
-    index: ReadSignal<usize>,
-    is_removable: ReadSignal<bool>,
+    text_value: String,
+    disabled: bool,
+    removable: bool,
+    removed: bool,
 }
 
 struct TagGroupSharedProps {
@@ -90,37 +100,72 @@ impl TagGroupSharedProps {
     }
 }
 
-impl TagGroupCtx {
-    fn remove_value(&mut self, selectable: TagSelectableContext, value: RcPartialEqValue) {
-        let mut removed = self.removed.write();
-        if removed.iter().any(|v| v == &value) {
-            return;
-        }
-        removed.push(value.clone());
-        drop(removed);
-
-        if selectable.is_selected(&value) {
-            match selectable.selection_mode {
-                SelectionMode::Single => selectable.clear_selection.call(()),
-                SelectionMode::Multiple => selectable.set_value.call(value),
-            }
-        }
+impl TagItem {
+    fn is_focusable(&self) -> bool {
+        !self.disabled && !self.removed
     }
 
-    fn is_removed(&self, value: &RcPartialEqValue) -> bool {
-        self.removed.read().iter().any(|v| v == value)
-    }
-
-    fn is_empty(&self, selectable: TagSelectableContext) -> bool {
-        selectable
-            .options
-            .read()
-            .iter()
-            .all(|option| self.is_removed(&option.value))
+    fn can_remove(&self) -> bool {
+        self.is_focusable() && self.removable
     }
 }
 
-impl TagSelectableContext {
+impl TagGroupCtx {
+    fn is_empty(&self) -> bool {
+        self.state.items.read().iter().all(|item| item.removed)
+    }
+}
+
+impl TagGroupState {
+    fn register_or_update_item(&mut self, mut item: TagItem) {
+        let mut items = self.items.write();
+        if let Some(position) = items.iter().position(|existing| existing.id == item.id) {
+            item.removed = items[position].removed;
+            items.remove(position);
+        }
+        insert_tag_item(&mut items, item);
+    }
+
+    fn unregister_item(&mut self, id: &str) {
+        self.items.write().retain(|item| item.id != id);
+    }
+
+    fn is_removed(&self, id: &str) -> bool {
+        self.items
+            .read()
+            .iter()
+            .find(|item| item.id == id)
+            .map(|item| item.removed)
+            .unwrap_or(false)
+    }
+
+    fn text_value(&self, id: &str) -> String {
+        self.items
+            .read()
+            .iter()
+            .find(|item| item.id == id)
+            .map(|item| item.text_value.clone())
+            .unwrap_or_default()
+    }
+
+    fn can_remove_item(&self, id: &str) -> bool {
+        self.items
+            .read()
+            .iter()
+            .find(|item| item.id == id)
+            .is_some_and(TagItem::can_remove)
+    }
+
+    fn focus_item(&mut self, id: &str) {
+        let index = self
+            .items
+            .read()
+            .iter()
+            .find(|item| item.id == id && item.is_focusable())
+            .map(|item| item.index);
+        self.focus.set_focus(index);
+    }
+
     fn is_selected(&self, value: &RcPartialEqValue) -> bool {
         self.values.read().iter().any(|v| v == value)
     }
@@ -151,15 +196,155 @@ impl TagSelectableContext {
         }
     }
 
-    /// Delete/Backspace targets: all selected tags when the focused tag is selected,
-    /// otherwise only the focused tag (even if other tags remain selected).
-    fn keyboard_remove_values(&self, focused: RcPartialEqValue) -> Vec<RcPartialEqValue> {
-        if self.is_selected(&focused) {
-            self.values.read().clone()
-        } else {
-            vec![focused]
-        }
+    fn remove_item_from_button(&mut self, id: &str) -> bool {
+        self.remove_items(vec![id.to_string()])
     }
+
+    fn remove_focused_from_keyboard(&mut self, focused_id: &str) -> bool {
+        let ids = self.keyboard_remove_item_ids(focused_id);
+        self.remove_items(ids)
+    }
+
+    fn keyboard_remove_item_ids(&self, focused_id: &str) -> Vec<String> {
+        let items = self.items.read();
+        let Some(focused) = items.iter().find(|item| item.id == focused_id) else {
+            return Vec::new();
+        };
+        if !focused.can_remove() {
+            return Vec::new();
+        }
+
+        let selected_values = self.values.read().clone();
+        let focused_selected = selected_values.iter().any(|value| value == &focused.value);
+        if !focused_selected {
+            return vec![focused.id.clone()];
+        }
+
+        items
+            .iter()
+            .filter(|item| {
+                item.can_remove()
+                    && selected_values
+                        .iter()
+                        .any(|selected| selected == &item.value)
+            })
+            .map(|item| item.id.clone())
+            .collect()
+    }
+
+    fn remove_items(&mut self, ids: Vec<String>) -> bool {
+        let items = self.items.read();
+        let selected_values = self.values.read().clone();
+        let mut removal_ids = Vec::new();
+        let mut removed_selected_values: Vec<RcPartialEqValue> = Vec::new();
+
+        for id in ids {
+            if removal_ids.iter().any(|existing| existing == &id) {
+                continue;
+            }
+            let Some(item) = items.iter().find(|item| item.id == id) else {
+                continue;
+            };
+            if !item.can_remove() {
+                continue;
+            }
+            if selected_values
+                .iter()
+                .any(|selected| selected == &item.value)
+                && !removed_selected_values
+                    .iter()
+                    .any(|selected| selected == &item.value)
+            {
+                removed_selected_values.push(item.value.clone());
+            }
+            removal_ids.push(item.id.clone());
+        }
+
+        if removal_ids.is_empty() {
+            return false;
+        }
+
+        let focus_target = self.focus.current_focus().and_then(|focused_index| {
+            items
+                .iter()
+                .any(|item| {
+                    item.index == focused_index
+                        && removal_ids.iter().any(|removed_id| removed_id == &item.id)
+                })
+                .then(|| {
+                    next_focus_after_removal(
+                        &items,
+                        focused_index,
+                        &removal_ids,
+                        (self.focus.roving_loop)(),
+                    )
+                })
+        });
+        drop(items);
+        drop(selected_values);
+
+        if let Some(target) = focus_target {
+            self.focus.set_focus(target);
+        }
+
+        {
+            let mut items = self.items.write();
+            for item in items.iter_mut() {
+                if removal_ids.iter().any(|id| id == &item.id) {
+                    item.removed = true;
+                }
+            }
+        }
+
+        if !removed_selected_values.is_empty() {
+            match self.selection_mode {
+                SelectionMode::Single => self.clear_selection.call(()),
+                SelectionMode::Multiple => {
+                    for value in removed_selected_values {
+                        self.set_value.call(value);
+                    }
+                }
+            }
+        }
+
+        true
+    }
+}
+
+fn insert_tag_item(items: &mut Vec<TagItem>, item: TagItem) {
+    let insert_at = items.partition_point(|existing| existing.index <= item.index);
+    items.insert(insert_at, item);
+}
+
+fn next_focus_after_removal(
+    items: &[TagItem],
+    focused_index: usize,
+    removal_ids: &[String],
+    roving_loop: bool,
+) -> Option<usize> {
+    let candidates: Vec<&TagItem> = items
+        .iter()
+        .filter(|item| {
+            item.is_focusable() && !removal_ids.iter().any(|removed_id| removed_id == &item.id)
+        })
+        .collect();
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    let next_position = candidates.partition_point(|item| item.index <= focused_index);
+    if let Some(next) = candidates.get(next_position) {
+        return Some(next.index);
+    }
+    if roving_loop {
+        return candidates.first().map(|item| item.index);
+    }
+
+    let prev_position = candidates.partition_point(|item| item.index < focused_index);
+    prev_position
+        .checked_sub(1)
+        .and_then(|position| candidates.get(position).map(|item| item.index))
 }
 
 /// Props for [`TagGroup`] (single selection).
@@ -389,26 +574,25 @@ fn use_tag_group_inner(shared: TagGroupSharedProps, selection: TagGroupSelection
         selection_mode,
     } = selection;
 
-    let options: Signal<Vec<OptionState>> = use_signal(Vec::default);
+    let items: Signal<Vec<TagItem>> = use_signal(Vec::default);
     let focus = use_focus_provider(roving_loop);
-    let removed: Signal<Vec<RcPartialEqValue>> = use_signal(Vec::default);
 
-    use_context_provider(|| TagSelectableContext {
+    let state = TagGroupState {
         values,
         set_value,
         clear_selection,
         selection_mode,
-        options,
+        items,
         focus,
         disabled,
         selectable,
         allow_empty_selection,
-    });
+    };
 
     let ctx = TagGroupCtx {
-        labeled_by: Signal::new(None),
+        labeled_by: use_signal(|| None),
         escape_clears_selection,
-        removed,
+        state,
     };
     use_context_provider(|| ctx);
 
@@ -492,31 +676,30 @@ pub struct TagListProps {
 #[component]
 pub fn TagList(props: TagListProps) -> Element {
     let ctx = use_context::<TagGroupCtx>();
-    let mut selectable = use_context::<TagSelectableContext>();
+    let mut state = ctx.state;
     let mut mounted = use_signal(|| false);
     use_effect(move || mounted.set(true));
-    let show_empty = use_memo(move || mounted() && ctx.is_empty(selectable));
+    let show_empty = use_memo(move || mounted() && ctx.is_empty());
 
     use_context_provider(|| TagListCtx { show_empty });
 
-    let list_tabbable = use_memo(move || {
-        !selectable.focus.any_focused() && selectable.focus.first_enabled_index().is_some()
-    });
+    let list_tabbable =
+        use_memo(move || !state.focus.any_focused() && state.focus.first_enabled_index().is_some());
 
     rsx! {
         div {
             role: "grid",
             aria_labelledby: ctx.labeled_by,
             tabindex: if list_tabbable() { "0" } else { "-1" },
-            aria_multiselectable: if selectable.selection_mode == SelectionMode::Multiple
-                && (selectable.selectable)()
+            aria_multiselectable: if state.selection_mode == SelectionMode::Multiple
+                && (state.selectable)()
             {
                 "true"
             },
             aria_colcount: "1",
             onfocus: move |_| {
-                if !selectable.focus.any_focused() {
-                    selectable.focus.focus_first();
+                if !state.focus.any_focused() {
+                    state.focus.focus_first();
                 }
             },
             ..props.attributes,
@@ -596,36 +779,20 @@ pub struct TagOptionProps<T: Clone + PartialEq + 'static = String> {
     #[props(default)]
     pub disabled: ReadSignal<bool>,
 
-    /// Whether this tag can be removed via [`TagRemoveButton`] or Delete/Backspace.
-    #[props(default)]
-    pub is_removable: ReadSignal<bool>,
-
     /// Additional attributes for the tag row element.
     #[props(extends = GlobalAttributes)]
     pub attributes: Vec<Attribute>,
 
-    /// The tag label; add [`TagRemoveButton`] when [`TagOptionProps::is_removable`] is `true`.
+    /// The tag label; add a [`TagRemoveButton`] to make the tag removable
+    /// (via click and via Delete/Backspace).
     pub children: Element,
-}
-
-/// After a tag is removed, restore roving focus when the deleted row had focus.
-fn redirect_focus_after_tag_removal(mut focus: FocusState, had_focus: bool) {
-    if !had_focus || focus.current_focus().is_some() {
-        return;
-    }
-    focus.focus_next();
-    if focus.current_focus().is_none() {
-        focus.focus_prev();
-    }
-    if focus.current_focus().is_none() {
-        focus.focus_first();
-    }
 }
 
 fn tag_option_on_keydown(
     e: Event<KeyboardData>,
-    mut ctx: TagGroupCtx,
-    mut selectable: TagSelectableContext,
+    ctx: TagGroupCtx,
+    mut state: TagGroupState,
+    id: String,
     value: RcPartialEqValue,
     is_disabled: bool,
     removable: bool,
@@ -639,37 +806,34 @@ fn tag_option_on_keydown(
 
     match key {
         Key::Escape if (ctx.escape_clears_selection)() => {
-            selectable.clear_selection.call(());
+            state.clear_selection.call(());
             prevent_default = true;
         }
         Key::Character(s) if s == " " => {
-            selectable.toggle_value(value.clone());
+            state.toggle_value(value.clone());
             prevent_default = true;
         }
         Key::Enter => {
-            selectable.toggle_value(value.clone());
+            state.toggle_value(value.clone());
             prevent_default = true;
         }
-        Key::Backspace | Key::Delete if removable && (selectable.selectable)() => {
-            for value in selectable.keyboard_remove_values(value) {
-                ctx.remove_value(selectable, value);
-            }
-            prevent_default = true;
+        Key::Backspace | Key::Delete if removable => {
+            prevent_default = state.remove_focused_from_keyboard(&id);
         }
         Key::ArrowUp | Key::ArrowLeft => {
-            selectable.focus.focus_prev();
+            state.focus.focus_prev();
             prevent_default = true;
         }
         Key::ArrowDown | Key::ArrowRight => {
-            selectable.focus.focus_next();
+            state.focus.focus_next();
             prevent_default = true;
         }
         Key::Home => {
-            selectable.focus.focus_first();
+            state.focus.focus_first();
             prevent_default = true;
         }
         Key::End => {
-            selectable.focus.focus_last();
+            state.focus.focus_last();
             prevent_default = true;
         }
         _ => {}
@@ -684,81 +848,69 @@ fn tag_option_on_keydown(
 #[component]
 pub fn TagOption<T: Clone + PartialEq + 'static>(props: TagOptionProps<T>) -> Element {
     let ctx: TagGroupCtx = use_context();
-    let mut selectable = use_context::<TagSelectableContext>();
+    let mut state = ctx.state;
     let index = props.index;
     let option_disabled = props.disabled;
-    let is_removable = props.is_removable;
+    // Removability is driven by the presence of `TagRemoveButton` children, which
+    // increment this counter while mounted (see `TagRemoveButton`).
+    let remove_button_count = use_signal(|| 0usize);
+    let is_removable = use_memo(move || remove_button_count() > 0);
     let text_value_signal = props.text_value;
     let option_value = props.value;
     let value = use_memo(move || RcPartialEqValue::new(option_value.cloned()));
-    let is_removed = use_memo(move || ctx.is_removed(&value()));
 
     let disabled = {
-        let root_disabled = selectable.disabled;
+        let root_disabled = state.disabled;
         use_memo(move || root_disabled.cloned() || option_disabled.cloned())
     };
 
     let id = use_id_or(use_unique_id(), props.id);
+    let item_id = use_unique_id();
     let text_value = use_memo(move || {
         option_text_value(&*option_value.read(), text_value_signal(), "TagOption")
     });
+    let is_removed = use_memo(move || state.is_removed(&item_id()));
 
     use_effect(move || {
-        if !is_removed() {
-            return;
-        }
-        let idx = index();
-        let had_focus = selectable.focus.is_focused(idx);
-        let option_id = id();
-        remove_option(selectable.options, &option_id);
-        selectable.focus.remove_item(idx);
-        redirect_focus_after_tag_removal(selectable.focus, had_focus);
+        let option_id = item_id();
+        state.register_or_update_item(TagItem {
+            id: option_id.clone(),
+            index: index(),
+            value: value(),
+            text_value: text_value.cloned(),
+            disabled: disabled(),
+            removable: is_removable(),
+            removed: false,
+        });
+    });
+    let mut cleanup_state = state;
+    use_effect_cleanup(move || {
+        cleanup_state.unregister_item(&item_id());
     });
 
-    use_effect_with_cleanup(move || {
-        let option_id = id();
-        if !is_removed() {
-            sync_option(
-                selectable.options,
-                OptionState {
-                    tab_index: index(),
-                    value: value(),
-                    text_value: text_value.cloned(),
-                    id: option_id.clone(),
-                    disabled: disabled(),
-                },
-            );
-        }
-        move || {
-            remove_option(selectable.options, &option_id);
-        }
-    });
-
-    use_focus_entry_disabled(selectable.focus, index, move || {
-        disabled.cloned() || is_removed()
-    });
-
-    let selected =
-        use_memo(move || selectable.selectable.cloned() && selectable.is_selected(&value()));
+    let selected = use_memo(move || state.selectable.cloned() && state.is_selected(&value()));
 
     use_context_provider(|| TagOptionCtx {
-        value: value(),
-        index,
-        is_removable,
+        id: item_id,
+        remove_button_count,
     });
 
     let tabindex = use_memo(move || {
-        if !(selectable.focus.roving_loop)() {
+        if disabled() || is_removed() {
+            return "-1";
+        }
+        if !(state.focus.roving_loop)() {
             return "0";
         }
-        if selectable.focus.recent_focus_or_default() == index.cloned() {
+        if state.focus.recent_focus_or_default() == index.cloned() {
             "0"
         } else {
             "-1"
         }
     });
 
-    let onmounted = use_focus_controlled_item_disabled(index, move || disabled.cloned());
+    let onmounted =
+        use_focus_controlled_item_disabled(index, move || disabled.cloned() || is_removed());
 
     if is_removed() {
         return rsx! {};
@@ -770,25 +922,26 @@ pub fn TagOption<T: Clone + PartialEq + 'static>(props: TagOptionProps<T>) -> El
             id: id(),
             tabindex,
             aria_rowindex: (index.cloned() as i32) + 1,
-            aria_selected: (selectable.selectable)().then_some(selected()),
+            aria_selected: (state.selectable)().then_some(selected()),
             aria_disabled: disabled(),
             "data-selected": selected(),
             "data-disabled": disabled(),
             onmounted,
-            onfocus: move |_| selectable.focus.set_focus(Some(index.cloned())),
+            onfocus: move |_| state.focus_item(&item_id()),
             onclick: move |_| {
                 if !disabled() {
-                    selectable.toggle_value(value());
+                    state.toggle_value(value());
                 }
             },
             onkeydown: move |e| {
                 tag_option_on_keydown(
                     e,
                     ctx,
-                    selectable,
+                    state,
+                    item_id(),
                     value(),
                     disabled(),
-                    is_removable.cloned(),
+                    is_removable(),
                 );
             },
             ..props.attributes,
@@ -804,39 +957,41 @@ pub fn TagOption<T: Clone + PartialEq + 'static>(props: TagOptionProps<T>) -> El
 
 /// Remove button for the enclosing [`TagOption`].
 ///
-/// Must be used inside [`TagOption`] with [`TagOptionProps::is_removable`] set to `true`.
+/// Must be used inside [`TagOption`]. Rendering this button makes the enclosing
+/// tag removable, both via click and via Delete/Backspace keyboard removal.
 #[component]
 pub fn TagRemoveButton(
     #[props(extends = GlobalAttributes)] attributes: Vec<Attribute>,
     children: Element,
 ) -> Element {
-    let mut ctx: TagGroupCtx = use_context();
-    let selectable = use_context::<TagSelectableContext>();
+    let ctx: TagGroupCtx = use_context();
+    let mut state = ctx.state;
     let option: TagOptionCtx = use_context();
 
-    if !option.is_removable.cloned() {
-        return rsx! {};
-    }
+    // Mark the enclosing tag removable while this button is mounted.
+    let mut remove_button_count = option.remove_button_count;
+    use_effect_with_cleanup(move || {
+        *remove_button_count.write() += 1;
+        move || {
+            *remove_button_count.write() -= 1;
+        }
+    });
 
     let label = use_memo(move || {
-        let text = selectable
-            .options
-            .read()
-            .iter()
-            .find(|o| o.tab_index == option.index.cloned())
-            .map(|o| o.text_value.clone())
-            .unwrap_or_default();
+        let text = state.text_value(&(option.id)());
         format!("Remove item {text}")
     });
+    let can_remove = use_memo(move || state.can_remove_item(&(option.id)()));
 
     rsx! {
         button {
             r#type: "button",
             tabindex: "-1",
+            disabled: !can_remove(),
             aria_label: "{label}",
             onclick: move |e| {
                 e.stop_propagation();
-                ctx.remove_value(selectable, option.value.clone());
+                state.remove_item_from_button(&(option.id)());
             },
             ..attributes,
             {children}

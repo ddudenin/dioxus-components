@@ -2,7 +2,6 @@ use dioxus::prelude::*;
 use dioxus_icons::lucide::X;
 use dioxus_primitives::tag_group::{
     self, TagGroupEmptyProps, TagGroupLabelProps, TagGroupMultiProps, TagGroupProps, TagListProps,
-    TagOptionProps,
 };
 
 #[css_module("/src/components/tag_group/style.css")]
@@ -84,15 +83,34 @@ pub fn TagList(props: TagListProps) -> Element {
     }
 }
 
+/// Props for the demo [`Tag`] wrapper. `is_removable` is a preview-only toggle
+/// that decides whether to render a [`RemoveButton`]; the primitive derives
+/// removability from the presence of that button.
+#[derive(Props, Clone, PartialEq)]
+pub struct TagProps {
+    pub value: ReadSignal<String>,
+    #[props(default)]
+    pub text_value: ReadSignal<Option<String>>,
+    pub index: ReadSignal<usize>,
+    #[props(default)]
+    pub id: ReadSignal<Option<String>>,
+    #[props(default)]
+    pub disabled: ReadSignal<bool>,
+    #[props(default)]
+    pub is_removable: ReadSignal<bool>,
+    #[props(extends = GlobalAttributes)]
+    pub attributes: Vec<Attribute>,
+    pub children: Element,
+}
+
 #[component]
-pub fn Tag(props: TagOptionProps<String>) -> Element {
+pub fn Tag(props: TagProps) -> Element {
     rsx! {
         tag_group::TagOption::<String> {
             class: Styles::dx_tag,
             value: props.value,
             text_value: props.text_value,
             disabled: props.disabled,
-            is_removable: props.is_removable,
             id: props.id,
             index: props.index,
             attributes: props.attributes,

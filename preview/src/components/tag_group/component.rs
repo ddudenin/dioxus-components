@@ -21,9 +21,7 @@ pub fn TagGroup(props: TagGroupProps<String>) -> Element {
             escape_clears_selection: props.escape_clears_selection,
             roving_loop: props.roving_loop,
             attributes: props.attributes,
-            TagList {
-                {props.children}
-            }
+            {props.children}
         }
     }
 }
@@ -42,9 +40,7 @@ pub fn TagGroupMulti(props: TagGroupMultiProps<String>) -> Element {
             escape_clears_selection: props.escape_clears_selection,
             roving_loop: props.roving_loop,
             attributes: props.attributes,
-            TagList {
-                {props.children}
-            }
+            {props.children}
         }
     }
 }
@@ -83,9 +79,6 @@ pub fn TagList(props: TagListProps) -> Element {
     }
 }
 
-/// Props for the demo [`Tag`] wrapper. `is_removable` is a preview-only toggle
-/// that decides whether to render a [`RemoveButton`]; the primitive derives
-/// removability from the presence of that button.
 #[derive(Props, Clone, PartialEq)]
 pub struct TagProps {
     pub value: ReadSignal<String>,
@@ -96,8 +89,6 @@ pub struct TagProps {
     pub id: ReadSignal<Option<String>>,
     #[props(default)]
     pub disabled: ReadSignal<bool>,
-    #[props(default)]
-    pub is_removable: ReadSignal<bool>,
     #[props(extends = GlobalAttributes)]
     pub attributes: Vec<Attribute>,
     pub children: Element,
@@ -115,15 +106,12 @@ pub fn Tag(props: TagProps) -> Element {
             index: props.index,
             attributes: props.attributes,
             {props.children}
-            if props.is_removable.cloned() {
-                RemoveButton {}
-            }
         }
     }
 }
 
 #[component]
-fn RemoveButton(
+pub fn RemoveButton(
     #[props(extends = GlobalAttributes)] attributes: Vec<Attribute>,
     children: Element,
 ) -> Element {

@@ -12,8 +12,8 @@ pub fn Demo() -> Element {
                 index,
                 value: t,
                 disabled,
-                is_removable: true,
                 "{t}"
+                RemoveButton {}
             }
         }
     });
@@ -27,8 +27,10 @@ pub fn Demo() -> Element {
             on_values_change: move |v| values.set(v),
             allow_empty_selection: false,
             TagGroupLabel { "Labels" }
-            TagGroupEmpty { "No tags" }
-            {tags}
+            TagList {
+                TagGroupEmpty { "No tags" }
+                {tags}
+            }
         }
     }
 }

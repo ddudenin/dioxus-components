@@ -15,9 +15,11 @@ pub fn Demo() -> Element {
                 "data-testid": "tag-group-disabled",
                 disabled: true,
                 TagGroupLabel { "Group disabled" }
-                TagGroupEmpty { "No tags" }
-                Tag { index: 0usize, value: "locked", is_removable: true, "locked" }
-                Tag { index: 1usize, value: "archived", is_removable: true, "archived" }
+                TagList {
+                    TagGroupEmpty { "No tags" }
+                    Tag { index: 0usize, value: "locked", "locked" RemoveButton {} }
+                    Tag { index: 1usize, value: "archived", "archived" RemoveButton {} }
+                }
             }
 
             TagGroup {
@@ -26,10 +28,12 @@ pub fn Demo() -> Element {
                 on_value_change: move |value| nonselectable_value.set(value),
                 selectable: false,
                 TagGroupLabel { "Non-selectable removable" }
-                TagGroupEmpty { "No tags" }
-                Tag { index: 0usize, value: "alpha", is_removable: true, "alpha" }
-                Tag { index: 1usize, value: "beta", is_removable: true, "beta" }
-                Tag { index: 2usize, value: "gamma", is_removable: true, "gamma" }
+                TagList {
+                    TagGroupEmpty { "No tags" }
+                    Tag { index: 0usize, value: "alpha", "alpha" RemoveButton {} }
+                    Tag { index: 1usize, value: "beta", "beta" RemoveButton {} }
+                    Tag { index: 2usize, value: "gamma", "gamma" RemoveButton {} }
+                }
             }
 
             TagGroupMulti {
@@ -37,11 +41,13 @@ pub fn Demo() -> Element {
                 values: mixed_values_signal,
                 on_values_change: move |values| mixed_values.set(values),
                 TagGroupLabel { "Mixed removable" }
-                TagGroupEmpty { "No tags" }
-                Tag { index: 0usize, value: "bug", is_removable: true, "bug" }
-                Tag { index: 1usize, value: "core", is_removable: true, "core" }
-                Tag { index: 2usize, value: "desktop", "desktop" }
-                Tag { index: 3usize, value: "feature", disabled: true, is_removable: true, "feature" }
+                TagList {
+                    TagGroupEmpty { "No tags" }
+                    Tag { index: 0usize, value: "bug", "bug" RemoveButton {} }
+                    Tag { index: 1usize, value: "core", "core" RemoveButton {} }
+                    Tag { index: 2usize, value: "desktop", "desktop" }
+                    Tag { index: 3usize, value: "feature", disabled: true, "feature" RemoveButton {} }
+                }
             }
         }
     }

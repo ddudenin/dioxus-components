@@ -11,8 +11,10 @@ TagGroup {
     value: Some(value.into()),
     on_value_change: move |value| { /* ... */ },
     TagGroupLabel { "Labels" }
-    TagGroupEmpty { "No tags" }
-    Tag { index: 0usize, value: "bug", is_removable: true, "bug" }
-    Tag { index: 1usize, value: "feature", disabled: true, "feature" }
+    TagList {
+        TagGroupEmpty { "No tags" }
+        Tag { index: 0usize, value: "bug", "bug" RemoveButton {} }
+        Tag { index: 1usize, value: "feature", disabled: true, "feature" }
+    }
 }
 ```

@@ -751,9 +751,14 @@ pub fn TagGroupEmpty(props: TagGroupEmptyProps) -> Element {
 
     rsx! {
         div {
-            role: "presentation",
+            role: "row",
             ..props.attributes,
-            {props.children}
+            div {
+                role: "gridcell",
+                aria_colindex: "1",
+                display: "contents",
+                {props.children}
+            }
         }
     }
 }

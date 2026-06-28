@@ -264,12 +264,20 @@ impl CollectionState {
 
     pub(crate) fn focus_next(&mut self) {
         let indices = self.available_indices();
-        self.set_focus(next_index_after(&indices, self.recent_focus(), self.loops()));
+        self.set_focus(next_index_after(
+            &indices,
+            self.recent_focus(),
+            self.loops(),
+        ));
     }
 
     pub(crate) fn focus_prev(&mut self) {
         let indices = self.available_indices();
-        self.set_focus(prev_index_before(&indices, self.recent_focus(), self.loops()));
+        self.set_focus(prev_index_before(
+            &indices,
+            self.recent_focus(),
+            self.loops(),
+        ));
     }
 
     /// Move focus to the next available item matching `predicate`, starting from
@@ -277,14 +285,22 @@ impl CollectionState {
     /// describe which items qualify.
     pub(crate) fn focus_next_matching(&mut self, predicate: impl Fn(usize) -> bool) {
         let indices = self.available_indices_matching(predicate);
-        self.set_focus(next_index_after(&indices, self.focused_index(), self.loops()));
+        self.set_focus(next_index_after(
+            &indices,
+            self.focused_index(),
+            self.loops(),
+        ));
     }
 
     /// Move focus to the previous available item matching `predicate`, starting
     /// from the currently focused item.
     pub(crate) fn focus_prev_matching(&mut self, predicate: impl Fn(usize) -> bool) {
         let indices = self.available_indices_matching(predicate);
-        self.set_focus(prev_index_before(&indices, self.focused_index(), self.loops()));
+        self.set_focus(prev_index_before(
+            &indices,
+            self.focused_index(),
+            self.loops(),
+        ));
     }
 
     pub(crate) fn try_focus_placement(&mut self, placement: CollectionPlacement) -> bool {

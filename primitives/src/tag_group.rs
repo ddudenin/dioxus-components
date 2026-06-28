@@ -955,7 +955,7 @@ pub fn TagOption<T: Clone + PartialEq + 'static>(props: TagOptionProps<T>) -> El
         collection_item(state.focus, index)
             .key(move || Some(item_id()))
             .disabled(move || disabled.cloned())
-            .hidden(move || is_removed()),
+            .hidden(move || is_removed.cloned()),
     );
     let tabindex = item.tabindex;
     let onmounted = item.onmounted();

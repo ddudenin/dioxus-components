@@ -194,7 +194,7 @@ impl CollectionState {
 
     pub(crate) fn is_available(&self, index: usize) -> bool {
         self.items
-            .peek()
+            .read()
             .iter()
             .any(|item| item.index == index && item.available())
     }

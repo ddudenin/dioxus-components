@@ -287,7 +287,7 @@ pub fn TabTrigger(props: TabTriggerProps) -> Element {
     let item = use_item(
         collection_item(ctx.focus, props.index)
             .disabled(disabled)
-            .selected(move || selected()),
+            .selected(move || selected.cloned()),
     );
     let onmounted = item.onmounted();
     let tab_index = item.tabindex;

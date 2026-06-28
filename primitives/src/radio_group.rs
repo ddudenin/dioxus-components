@@ -280,7 +280,7 @@ pub fn RadioItem(props: RadioItemProps) -> Element {
     let item = use_item(
         collection_item(ctx.focus, props.index)
             .disabled(disabled)
-            .selected(move || checked()),
+            .selected(move || checked.cloned()),
     );
     let tab_index = item.tabindex;
     let onmounted = item.onmounted();

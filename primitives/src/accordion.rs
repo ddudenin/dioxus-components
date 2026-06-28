@@ -1,7 +1,7 @@
 //! Defines the [`Accordion`] component and its sub-components.
 
+use crate::collection::{collection_item, use_item, CollectionOptions, CollectionState};
 use crate::dioxus_elements::Key;
-use crate::focus::{use_focus_control_disabled, use_focus_entry_disabled, FocusState};
 use crate::{use_animated_open, use_id_or, use_unique_id};
 use dioxus::prelude::*;
 
@@ -30,7 +30,7 @@ struct AccordionContext {
     horizontal: ReadSignal<bool>,
 
     /// Roving focus state, keyed by the per-item runtime id.
-    focus: FocusState,
+    focus: CollectionState,
 }
 
 impl AccordionContext {
@@ -47,7 +47,10 @@ impl AccordionContext {
             disabled,
             collapsible,
             horizontal,
-            focus: FocusState::new(ReadSignal::new(Signal::new(true))),
+            focus: CollectionState::new(
+                ReadSignal::new(Signal::new(true)),
+                CollectionOptions::default(),
+            ),
         }
     }
 
@@ -195,7 +198,7 @@ pub fn Accordion(props: AccordionProps) -> Element {
             "data-disabled": (props.disabled)(),
 
             onfocusout: move |_| {
-                ctx.focus.blur();
+                ctx.focus.clear_focus();
             },
 
             ..props.attributes,
@@ -287,10 +290,6 @@ pub fn AccordionItem(props: AccordionItemProps) -> Element {
         disabled: props.disabled,
         on_trigger_click: props.on_trigger_click,
     });
-
-    let disabled = move || ctx.is_disabled() || item.is_disabled();
-    let id_signal = use_signal(|| item.id);
-    use_focus_entry_disabled(ctx.focus, id_signal, disabled);
 
     // Open this item if we're set as default.
     use_hook(move || {
@@ -436,8 +435,9 @@ pub fn AccordionTrigger(props: AccordionTriggerProps) -> Element {
     let item: Item = use_context();
 
     let disabled = move || ctx.is_disabled() || item.is_disabled();
+    // The trigger is the focusable element, so it registers this accordion item.
     let id_signal = use_signal(|| item.id);
-    let onmounted = use_focus_control_disabled(ctx.focus, id_signal, disabled);
+    let onmounted = use_item(collection_item(ctx.focus, id_signal).disabled(disabled)).onmounted();
 
     rsx! {
         button {

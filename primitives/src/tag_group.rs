@@ -3,7 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::{
-    focus::{use_focus_controlled_item_disabled, use_focus_provider, FocusState},
+    collection::{collection_item, use_collection_provider, use_item, CollectionState},
     selectable::SelectionMode,
     selection::{option_text_value, RcPartialEqValue},
     use_controlled, use_effect_cleanup, use_effect_with_cleanup, use_id_or, use_unique_id,
@@ -14,10 +14,11 @@ use crate::{
 struct TagGroupState {
     values: Memo<Vec<RcPartialEqValue>>,
     set_value: Callback<RcPartialEqValue>,
+    set_values: Callback<Vec<RcPartialEqValue>>,
     clear_selection: Callback<()>,
     selection_mode: SelectionMode,
     items: Signal<Vec<TagItem>>,
-    focus: FocusState,
+    focus: CollectionState,
     disabled: ReadSignal<bool>,
     selectable: ReadSignal<bool>,
     allow_empty_selection: ReadSignal<bool>,
@@ -70,6 +71,7 @@ struct TagGroupSharedProps {
 struct TagGroupSelection {
     values: Memo<Vec<RcPartialEqValue>>,
     set_value: Callback<RcPartialEqValue>,
+    set_values: Callback<Vec<RcPartialEqValue>>,
     clear_selection: Callback<()>,
     selection_mode: SelectionMode,
 }
@@ -117,13 +119,8 @@ impl TagGroupCtx {
 }
 
 impl TagGroupState {
-    fn register_or_update_item(&mut self, mut item: TagItem) {
-        let mut items = self.items.write();
-        if let Some(position) = items.iter().position(|existing| existing.id == item.id) {
-            item.removed = items[position].removed;
-            items.remove(position);
-        }
-        insert_tag_item(&mut items, item);
+    fn register_or_update_item(&mut self, item: TagItem) {
+        sync_tag_item(&mut self.items.write(), item);
     }
 
     fn unregister_item(&mut self, id: &str) {
@@ -264,7 +261,7 @@ impl TagGroupState {
             return false;
         }
 
-        let focus_target = self.focus.current_focus().and_then(|focused_index| {
+        let focus_target = self.focus.focused_index().and_then(|focused_index| {
             items
                 .iter()
                 .any(|item| {
@@ -276,10 +273,13 @@ impl TagGroupState {
                         &items,
                         focused_index,
                         &removal_ids,
-                        (self.focus.roving_loop)(),
+                        self.focus.loops(),
                     )
                 })
         });
+        let remaining_selected_values =
+            selected_values_after_removal(&selected_values, &removed_selected_values);
+
         drop(items);
         drop(selected_values);
 
@@ -300,9 +300,7 @@ impl TagGroupState {
             match self.selection_mode {
                 SelectionMode::Single => self.clear_selection.call(()),
                 SelectionMode::Multiple => {
-                    for value in removed_selected_values {
-                        self.set_value.call(value);
-                    }
+                    self.set_values.call(remaining_selected_values);
                 }
             }
         }
@@ -311,9 +309,32 @@ impl TagGroupState {
     }
 }
 
+fn sync_tag_item(items: &mut Vec<TagItem>, mut item: TagItem) {
+    if let Some(position) = items.iter().position(|existing| existing.id == item.id) {
+        item.removed = items[position].removed && items[position].value == item.value;
+        items.remove(position);
+    }
+    insert_tag_item(items, item);
+}
+
 fn insert_tag_item(items: &mut Vec<TagItem>, item: TagItem) {
     let insert_at = items.partition_point(|existing| existing.index <= item.index);
     items.insert(insert_at, item);
+}
+
+fn selected_values_after_removal(
+    selected_values: &[RcPartialEqValue],
+    removed_selected_values: &[RcPartialEqValue],
+) -> Vec<RcPartialEqValue> {
+    selected_values
+        .iter()
+        .filter(|selected| {
+            !removed_selected_values
+                .iter()
+                .any(|removed| removed == *selected)
+        })
+        .cloned()
+        .collect()
 }
 
 fn next_focus_after_removal(
@@ -475,6 +496,19 @@ pub fn TagGroup<T: Clone + PartialEq + 'static>(props: TagGroupProps<T>) -> Elem
         internal_value.set(Some(value.clone()));
         on_change.call(Some(value));
     });
+    let set_values = use_callback(move |incoming: Vec<RcPartialEqValue>| {
+        if let Some(incoming) = incoming.into_iter().next() {
+            let value = incoming
+                .as_ref::<T>()
+                .unwrap_or_else(|| panic!("TagGroup and TagOption value types must match"))
+                .clone();
+            internal_value.set(Some(value.clone()));
+            on_change.call(Some(value));
+        } else {
+            internal_value.set(None);
+            on_change.call(None);
+        }
+    });
     let clear_selection = use_callback(move |_| {
         internal_value.set(None);
         on_change.call(None);
@@ -485,6 +519,7 @@ pub fn TagGroup<T: Clone + PartialEq + 'static>(props: TagGroupProps<T>) -> Elem
         TagGroupSelection {
             values,
             set_value,
+            set_values,
             clear_selection,
             selection_mode: SelectionMode::Single,
         },
@@ -542,6 +577,18 @@ pub fn TagGroupMulti<T: Clone + PartialEq + 'static>(props: TagGroupMultiProps<T
         }
         set_multi_internal.call(current);
     });
+    let set_values = use_callback(move |values: Vec<RcPartialEqValue>| {
+        let values = values
+            .into_iter()
+            .map(|value| {
+                value
+                    .as_ref::<T>()
+                    .unwrap_or_else(|| panic!("TagGroupMulti and TagOption value types must match"))
+                    .clone()
+            })
+            .collect();
+        set_multi_internal.call(values);
+    });
     let clear_selection = use_callback(move |_| {
         set_multi_internal.call(Vec::new());
     });
@@ -551,6 +598,7 @@ pub fn TagGroupMulti<T: Clone + PartialEq + 'static>(props: TagGroupMultiProps<T
         TagGroupSelection {
             values,
             set_value,
+            set_values,
             clear_selection,
             selection_mode: SelectionMode::Multiple,
         },
@@ -570,16 +618,18 @@ fn use_tag_group_inner(shared: TagGroupSharedProps, selection: TagGroupSelection
     let TagGroupSelection {
         values,
         set_value,
+        set_values,
         clear_selection,
         selection_mode,
     } = selection;
 
     let items: Signal<Vec<TagItem>> = use_signal(Vec::default);
-    let focus = use_focus_provider(roving_loop);
+    let focus = use_collection_provider(roving_loop);
 
     let state = TagGroupState {
         values,
         set_value,
+        set_values,
         clear_selection,
         selection_mode,
         items,
@@ -683,8 +733,9 @@ pub fn TagList(props: TagListProps) -> Element {
 
     use_context_provider(|| TagListCtx { show_empty });
 
-    let list_tabbable =
-        use_memo(move || !state.focus.any_focused() && state.focus.first_enabled_index().is_some());
+    let list_tabbable = use_memo(move || {
+        !state.focus.any_focused() && state.focus.first_available_index().is_some()
+    });
 
     rsx! {
         div {
@@ -900,22 +951,14 @@ pub fn TagOption<T: Clone + PartialEq + 'static>(props: TagOptionProps<T>) -> El
         remove_button_count,
     });
 
-    let tabindex = use_memo(move || {
-        if disabled() || is_removed() {
-            return "-1";
-        }
-        if !(state.focus.roving_loop)() {
-            return "0";
-        }
-        if state.focus.recent_focus_or_default() == index.cloned() {
-            "0"
-        } else {
-            "-1"
-        }
-    });
-
-    let onmounted =
-        use_focus_controlled_item_disabled(index, move || disabled.cloned() || is_removed());
+    let item = use_item(
+        collection_item(state.focus, index)
+            .key(move || Some(item_id()))
+            .disabled(move || disabled.cloned())
+            .hidden(move || is_removed()),
+    );
+    let tabindex = item.tabindex;
+    let onmounted = item.onmounted();
 
     if is_removed() {
         return rsx! {};
